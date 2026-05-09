@@ -21,31 +21,111 @@ const WORLD = {
     start:   { x: 900 + SHIFT_X, y: 935 + SHIFT_Y }
 };
 
-const RIVER_POINTS = [
-    { x:  60 + SHIFT_X, y: 380 + SHIFT_Y },
-    { x: 280 + SHIFT_X, y: 340 + SHIFT_Y },
-    { x: 500 + SHIFT_X, y: 510 + SHIFT_Y },
-    { x: 800 + SHIFT_X, y: 580 + SHIFT_Y },
-    { x: 1100 + SHIFT_X, y: 480 + SHIFT_Y },
-    { x: 1380 + SHIFT_X, y: 600 + SHIFT_Y },
-    { x: 1640 + SHIFT_X, y: 720 + SHIFT_Y },
-    { x: 1760 + SHIFT_X, y: 760 + SHIFT_Y }
-];
+// Геометрия уровня (река, мосты, препятствия) — генерируется случайно
+// перед стартом каждой игры в regenerateLevelGeometry().
+let RIVER_POINTS = [];
+let BRIDGES = [];
+let OBSTACLES = [];
 const RIVER_HALF_WIDTH = 36;
 
-// Мосты — позиции на середине соответствующих сегментов реки.
-// Угол вычисляется в момент отрисовки от тангенса реки (см. drawBridges).
-const BRIDGES = [
-    { x: (280 + 500) / 2 + SHIFT_X, y: (340 + 510) / 2 + SHIFT_Y, w: 110, h: 110 },
-    { x: (1100 + 1380) / 2 + SHIFT_X, y: (480 + 600) / 2 + SHIFT_Y, w: 110, h: 110 }
-];
+function generateRiverPoints() {
+    const d = WORLD.diamond;
+    // Случайная ориентация: горизонтальная (60%) или вертикальная
+    const horizontal = Math.random() < 0.6;
+    let start, end;
+    if (horizontal) {
+        start = { x: d.cx - d.hw - 60, y: d.cy + (Math.random() - 0.5) * d.hh * 0.9 };
+        end   = { x: d.cx + d.hw + 60, y: d.cy + (Math.random() - 0.5) * d.hh * 0.9 };
+    } else {
+        start = { x: d.cx + (Math.random() - 0.5) * d.hw * 0.9, y: d.cy - d.hh - 60 };
+        end   = { x: d.cx + (Math.random() - 0.5) * d.hw * 0.9, y: d.cy + d.hh + 60 };
+    }
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const perpX = -dy / len;
+    const perpY = dx / len;
 
-const OBSTACLES = [
-    { type: 'boulder', x: 290 + SHIFT_X, y: 700 + SHIFT_Y, r: 42 },
-    { type: 'boulder', x: 1480 + SHIFT_X, y: 360 + SHIFT_Y, r: 38 },
-    { type: 'log',     x: 700 + SHIFT_X, y: 280 + SHIFT_Y, r: 50, angle: -15 },
-    { type: 'log',     x: 1180 + SHIFT_X, y: 820 + SHIFT_Y, r: 50, angle: 25 }
-];
+    const numMid = 5 + Math.floor(Math.random() * 3); // 5..7 промежуточных
+    const pts = [start];
+    for (let i = 1; i <= numMid; i++) {
+        const t = i / (numMid + 1);
+        const baseX = start.x + dx * t;
+        const baseY = start.y + dy * t;
+        // Огибающая sin: отклонение максимально в середине, мягко затухает к краям
+        const envelope = Math.sin(t * Math.PI) * 220;
+        const offset = (Math.random() - 0.5) * 2 * envelope;
+        pts.push({ x: baseX + perpX * offset, y: baseY + perpY * offset });
+    }
+    pts.push(end);
+    return pts;
+}
+
+function generateBridges(riverPts) {
+    // Два моста на разных участках реки
+    const out = [];
+    const fractions = [
+        0.22 + Math.random() * 0.12,
+        0.62 + Math.random() * 0.12
+    ];
+    for (const f of fractions) {
+        const idx = Math.max(0, Math.min(riverPts.length - 2, Math.floor((riverPts.length - 1) * f)));
+        const a = riverPts[idx];
+        const b = riverPts[idx + 1];
+        out.push({
+            x: (a.x + b.x) / 2,
+            y: (a.y + b.y) / 2,
+            w: 110, h: 110
+        });
+    }
+    return out;
+}
+
+function generateObstacles() {
+    const out = [];
+    const target = 4 + Math.floor(Math.random() * 3); // 4..6
+    let attempts = 0;
+    while (out.length < target && attempts < 400) {
+        attempts++;
+        const x = WORLD.diamond.cx + (Math.random() - 0.5) * 2 * WORLD.diamond.hw * 0.85;
+        const y = WORLD.diamond.cy + (Math.random() - 0.5) * 2 * WORLD.diamond.hh * 0.85;
+        if (!isInsideDiamond(x, y, 0.85)) continue;
+        if (dist(x, y, WORLD.cave.x, WORLD.cave.y) < 220) continue;
+        if (dist(x, y, WORLD.start.x, WORLD.start.y) < 220) continue;
+        if (out.some(o => dist(x, y, o.x, o.y) < 140)) continue;
+        // Не на реке
+        let onRiver = false;
+        for (let i = 0; i < RIVER_POINTS.length - 1 && !onRiver; i++) {
+            if (distToSegment(x, y, RIVER_POINTS[i], RIVER_POINTS[i + 1]) < RIVER_HALF_WIDTH + 25) onRiver = true;
+        }
+        if (onRiver) continue;
+
+        const isLog = Math.random() < 0.5;
+        if (isLog) {
+            out.push({
+                type: 'log', x, y,
+                r: 50,
+                angle: (Math.random() - 0.5) * 70 // -35..+35 градусов
+            });
+        } else {
+            out.push({
+                type: 'boulder', x, y,
+                r: 36 + Math.random() * 10
+            });
+        }
+    }
+    return out;
+}
+
+function regenerateLevelGeometry() {
+    RIVER_POINTS = generateRiverPoints();
+    BRIDGES = generateBridges(RIVER_POINTS);
+    OBSTACLES = generateObstacles(); // зависит от RIVER_POINTS — генерим после реки
+    // Доступ из тестов
+    window.RIVER_POINTS = RIVER_POINTS;
+    window.BRIDGES = BRIDGES;
+    window.OBSTACLES = OBSTACLES;
+}
 
 const TOTAL_CHESTS = 10;
 
@@ -973,6 +1053,9 @@ class GameScene extends Phaser.Scene {
     constructor() { super('Game'); }
 
     create() {
+        // Каждый запуск — новая генерация реки/мостов/препятствий
+        regenerateLevelGeometry();
+
         // Состояние уровня
         this.fruits = 0;
         this.correctAnswers = 0;

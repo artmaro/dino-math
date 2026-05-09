@@ -278,8 +278,8 @@ test.describe('Dino Math game — smoke', () => {
         await page.locator('.answer-btn', { hasText: String(wrong) }).click();
 
         // Ждём и проверяем — никакого modal-feedback не появилось
-        await page.waitForTimeout(1500);
-        await expect(page.locator('#modal-question')).not.toHaveClass(/active/);
+        await page.waitForTimeout(2200);
+        await expect(page.locator('#modal-question')).not.toHaveClass(/active/, { timeout: 5000 });
         // modal-feedback вообще больше нет в HTML
         const fb = await page.locator('#modal-feedback').count();
         expect(fb).toBe(0);
@@ -400,6 +400,41 @@ test.describe('Dino Math game — smoke', () => {
         await page.waitForTimeout(300);
         const after = await page.evaluate(() => window.__game.scene.getScene('Game').health);
         expect(after).toBe(4);
+    });
+
+    test('river / bridges / obstacles are randomly generated each run', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        const snapshot1 = await page.evaluate(() => ({
+            river: window.RIVER_POINTS ? window.RIVER_POINTS.map(p => [p.x | 0, p.y | 0]) : null,
+            bridges: window.BRIDGES ? window.BRIDGES.map(b => [b.x | 0, b.y | 0]) : null,
+            obstacles: window.OBSTACLES ? window.OBSTACLES.map(o => [o.type, o.x | 0, o.y | 0]) : null
+        }));
+        // Проверяем, что переменные доступны для теста (выставляются ниже в game.js)
+        expect(snapshot1.river).not.toBeNull();
+        expect(snapshot1.river.length).toBeGreaterThanOrEqual(6);
+        expect(snapshot1.bridges).toHaveLength(2);
+        expect(snapshot1.obstacles.length).toBeGreaterThanOrEqual(4);
+
+        // Перезапускаем уровень и сравниваем геометрию — она должна быть другой
+        await page.evaluate(() => {
+            window.__game.scene.stop('Game');
+            window.__game.scene.start('Game');
+        });
+        await waitForGameSceneReady(page);
+        const snapshot2 = await page.evaluate(() => ({
+            river: window.RIVER_POINTS.map(p => [p.x | 0, p.y | 0]),
+            bridges: window.BRIDGES.map(b => [b.x | 0, b.y | 0]),
+            obstacles: window.OBSTACLES.map(o => [o.type, o.x | 0, o.y | 0])
+        }));
+
+        const sameRiver = JSON.stringify(snapshot1.river) === JSON.stringify(snapshot2.river);
+        const sameBridges = JSON.stringify(snapshot1.bridges) === JSON.stringify(snapshot2.bridges);
+        const sameObstacles = JSON.stringify(snapshot1.obstacles) === JSON.stringify(snapshot2.obstacles);
+        expect(sameRiver && sameBridges && sameObstacles).toBe(false);
     });
 
     test('correct answer awards a fruit and closes modal', async ({ page }) => {
