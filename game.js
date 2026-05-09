@@ -118,10 +118,27 @@ function generateObstacles() {
 }
 
 function regenerateLevelGeometry() {
-    RIVER_POINTS = generateRiverPoints();
-    BRIDGES = generateBridges(RIVER_POINTS);
-    OBSTACLES = generateObstacles(); // зависит от RIVER_POINTS — генерим после реки
-    // Доступ из тестов
+    // Тайловая река: набор ячеек + мостов
+    waterCells.clear();
+    bridgeCells.clear();
+    const riverPath = generateRiverCellPath();
+    riverPath.forEach(p => waterCells.add(cellKey(p.c, p.r)));
+    const bridges = selectBridgeCells(riverPath);
+    bridges.forEach(p => bridgeCells.add(cellKey(p.c, p.r)));
+
+    // Заполняем legacy-структуры (RIVER_POINTS / BRIDGES) из тайловой реки —
+    // их используют генераторы chests/decor/obstacles и тесты.
+    RIVER_POINTS = riverPath.map(p => tileToScreen(p.c, p.r));
+    BRIDGES = bridges.map(p => {
+        const s = tileToScreen(p.c, p.r);
+        return { x: s.x, y: s.y, w: 200, h: 120 };
+    });
+    OBSTACLES = generateObstacles();
+
+    // Сохраняем выбранный путь и направление каждого моста для отрисовки
+    window.__riverPath = riverPath;
+    window.__bridgeCells = bridges;
+    // Экспозиция для тестов
     window.RIVER_POINTS = RIVER_POINTS;
     window.BRIDGES = BRIDGES;
     window.OBSTACLES = OBSTACLES;
@@ -294,7 +311,8 @@ function isOnBridge(x, y) {
     return false;
 }
 function blockedByObstacle(x, y) {
-    if (distToRiver(x, y) < RIVER_HALF_WIDTH && !isOnBridge(x, y)) return true;
+    // Тайловая проверка воды: точка в водяной ячейке, которая не мост → blocked
+    if (isWaterCellAt(x, y)) return true;
     for (const o of OBSTACLES) {
         if (dist(x, y, o.x, o.y) < o.r) return true;
     }
@@ -609,6 +627,191 @@ const IMAGE_ASSETS = [
     { key: 'img-heart-empty', url: 'assets/19_heart_empty.png', maxDim: 64, crop: true, displayH: 32 }
 ];
 
+// Iso-тайлсет v1 (ровно 256×128 ромбы; декорации 128×128).
+// Не кропим и не масштабируем — рендерим 1:1 чтобы тайлы стыковались.
+const TILESET_FILES = [
+    // База: трава, земля, песок, камень
+    'tile_grass_01', 'tile_grass_02', 'tile_grass_03', 'tile_grass_04',
+    'tile_dirt_01', 'tile_dirt_02', 'tile_sand_01', 'tile_stone_path_01',
+    // Вода
+    'tile_water_deep_01', 'tile_water_deep_02', 'tile_water_shallow_01',
+    // Мосты
+    'tile_bridge_iso_NE', 'tile_bridge_iso_NW', 'tile_bridge_iso_horizontal',
+    // Переходы grass↔dirt (12)
+    'transition_grass_dirt_TL', 'transition_grass_dirt_TR',
+    'transition_grass_dirt_BL', 'transition_grass_dirt_BR',
+    'transition_grass_dirt_T',  'transition_grass_dirt_B',
+    'transition_grass_dirt_L',  'transition_grass_dirt_R',
+    'transition_grass_dirt_INNER_TL', 'transition_grass_dirt_INNER_TR',
+    'transition_grass_dirt_INNER_BL', 'transition_grass_dirt_INNER_BR',
+    // Переходы grass↔water (12)
+    'transition_grass_water_TL', 'transition_grass_water_TR',
+    'transition_grass_water_BL', 'transition_grass_water_BR',
+    'transition_grass_water_T',  'transition_grass_water_B',
+    'transition_grass_water_L',  'transition_grass_water_R',
+    'transition_grass_water_INNER_TL', 'transition_grass_water_INNER_TR',
+    'transition_grass_water_INNER_BL', 'transition_grass_water_INNER_BR',
+    // Декорации
+    'decor_grass_tuft_01', 'decor_grass_tuft_02',
+    'decor_mushroom_red', 'decor_mushroom_brown',
+    'decor_pebble_pile', 'decor_shadow_round'
+];
+
+TILESET_FILES.forEach(name => {
+    IMAGE_ASSETS.push({
+        key: name, // ключ Phaser-текстуры = имя файла без .png
+        url: `assets/tileset_v1/${name}.png`
+        // без maxDim/crop/scaleFactor — сохраняем native pixel-perfect
+    });
+});
+
+// Анимированная вода — 4 кадра 256×128 в один ряд
+IMAGE_ASSETS.push({
+    key: 'tile_water_anim',
+    url: 'assets/tileset_v1/tile_water_deep_anim_4x1.png',
+    spritesheet: { cols: 4, rows: 1 }
+});
+
+// ===== Iso-сетка =====
+const TILE_W = 256;
+const TILE_H = 128;
+// Сетка 8×8: ромб 1792×896 в screen-координатах, ~совпадает с WORLD.diamond.
+// originX/Y подобраны так, чтобы центр ромба тайлов совпадал с WORLD.diamond.cx/cy.
+const TILE_GRID = { cols: 8, rows: 8, originX: 1200, originY: 402 };
+
+function tileToScreen(col, row) {
+    return {
+        x: TILE_GRID.originX + (col - row) * (TILE_W / 2),
+        y: TILE_GRID.originY + (col + row) * (TILE_H / 2)
+    };
+}
+
+// Обратное преобразование: world (x,y) → ближайшая ячейка сетки.
+function cellAt(x, y) {
+    const dx = x - TILE_GRID.originX;
+    const dy = y - TILE_GRID.originY;
+    const c = Math.round((dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2);
+    const r = Math.round((dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2);
+    return { c, r };
+}
+
+function inGrid(c, r) {
+    return c >= 0 && r >= 0 && c < TILE_GRID.cols && r < TILE_GRID.rows;
+}
+
+// Сеты ячеек уровня — заполняются в regenerateLevelGeometry()
+const waterCells = new Set();
+const bridgeCells = new Set();
+const cellKey = (c, r) => `${c},${r}`;
+
+function isWaterCellAt(x, y) {
+    const { c, r } = cellAt(x, y);
+    if (!inGrid(c, r)) return false;
+    const k = cellKey(c, r);
+    return waterCells.has(k) && !bridgeCells.has(k);
+}
+
+// Генерация пути реки по сетке: от случайного входа до случайного выхода
+// на противоположной стороне ромба, с лёгким меандром.
+function generateRiverCellPath() {
+    const cols = TILE_GRID.cols;
+    const rows = TILE_GRID.rows;
+    // Углы (cave/start) — там не должно быть реки
+    const forbidden = new Set([cellKey(0, 0), cellKey(cols - 1, rows - 1)]);
+    // Случайная ориентация: top↔bottom (по строкам) или left↔right (по колонкам)
+    const horizontal = Math.random() < 0.5;
+    let start, end;
+    if (horizontal) {
+        start = { c: 0,        r: 1 + Math.floor(Math.random() * (rows - 2)) };
+        end   = { c: cols - 1, r: 1 + Math.floor(Math.random() * (rows - 2)) };
+    } else {
+        start = { c: 1 + Math.floor(Math.random() * (cols - 2)), r: 0 };
+        end   = { c: 1 + Math.floor(Math.random() * (cols - 2)), r: rows - 1 };
+    }
+    const path = [{ c: start.c, r: start.r }];
+    let { c, r } = start;
+    let steps = 0;
+    const visited = new Set([cellKey(c, r)]);
+    while ((c !== end.c || r !== end.r) && steps < cols * rows * 2) {
+        steps++;
+        const dxToEnd = Math.sign(end.c - c);
+        const dyToEnd = Math.sign(end.r - r);
+        // 70% — шаг к цели по доминирующей оси, 30% — случайный шаг для меандра
+        let dc = 0, dr = 0;
+        if (Math.random() < 0.7) {
+            if (Math.abs(end.c - c) >= Math.abs(end.r - r)) dc = dxToEnd || (Math.random() < 0.5 ? 1 : -1);
+            else dr = dyToEnd || (Math.random() < 0.5 ? 1 : -1);
+        } else {
+            if (Math.random() < 0.5) dc = (Math.random() < 0.5 ? 1 : -1);
+            else dr = (Math.random() < 0.5 ? 1 : -1);
+        }
+        const nc = c + dc, nr = r + dr;
+        if (!inGrid(nc, nr) || forbidden.has(cellKey(nc, nr)) || visited.has(cellKey(nc, nr))) {
+            // Пробуем другой ход «к цели» строго
+            const tryC = c + (dxToEnd || 0);
+            const tryR = r + (dyToEnd || 0);
+            if (inGrid(tryC, r) && !forbidden.has(cellKey(tryC, r)) && !visited.has(cellKey(tryC, r))) {
+                c = tryC;
+            } else if (inGrid(c, tryR) && !forbidden.has(cellKey(c, tryR)) && !visited.has(cellKey(c, tryR))) {
+                r = tryR;
+            } else {
+                break; // тупик — выходим
+            }
+        } else {
+            c = nc; r = nr;
+        }
+        visited.add(cellKey(c, r));
+        path.push({ c, r });
+    }
+    return path;
+}
+
+// Выбираем 2 ячейки моста на пути (≈30% и ≈70%, но не самые крайние)
+function selectBridgeCells(path) {
+    if (path.length < 4) return [];
+    const idx1 = Math.max(1, Math.floor(path.length * (0.22 + Math.random() * 0.12)));
+    const idx2 = Math.min(path.length - 2, Math.floor(path.length * (0.62 + Math.random() * 0.12)));
+    return [path[idx1], path[idx2]].filter(Boolean);
+}
+
+// Маска соседей (NW/NE/SE/SW) → ключ тайла-перехода grass↔water
+function transitionKeyForGrass(c, r, kind = 'water') {
+    const isOther = (cc, rr) => waterCells.has(cellKey(cc, rr));
+    const nw = isOther(c - 1, r);
+    const ne = isOther(c, r - 1);
+    const se = isOther(c + 1, r);
+    const sw = isOther(c, r + 1);
+    const mask = (nw ? 1 : 0) | (ne ? 2 : 0) | (se ? 4 : 0) | (sw ? 8 : 0);
+    const PREFIX = `transition_grass_${kind}_`;
+    switch (mask) {
+        case 0b0001: return PREFIX + 'TL';
+        case 0b0010: return PREFIX + 'TR';
+        case 0b0100: return PREFIX + 'BR';
+        case 0b1000: return PREFIX + 'BL';
+        case 0b0011: return PREFIX + 'T';
+        case 0b0110: return PREFIX + 'R';
+        case 0b1100: return PREFIX + 'B';
+        case 0b1001: return PREFIX + 'L';
+        case 0b0111: return PREFIX + 'INNER_BL';
+        case 0b1011: return PREFIX + 'INNER_BR';
+        case 0b1110: return PREFIX + 'INNER_TL';
+        case 0b1101: return PREFIX + 'INNER_TR';
+        default: return null; // диагональные/полные комбинации — пропускаем
+    }
+}
+
+// По направлению пути в ячейке выбираем подходящий тайл моста
+function bridgeTextureKeyFor(prevCell, cell, nextCell) {
+    // Определяем dc/dr вдоль направления (используем сосед, который есть)
+    const a = prevCell || cell;
+    const b = nextCell || cell;
+    const dc = b.c - a.c;
+    const dr = b.r - a.r;
+    if (dc !== 0 && dr === 0) return 'tile_bridge_iso_NE';   // вдоль ряда — мост по диагонали NE
+    if (dc === 0 && dr !== 0) return 'tile_bridge_iso_NW';   // вдоль колонки — мост по диагонали NW
+    return 'tile_bridge_iso_horizontal';                     // запасной
+}
+
 function makeSpriteSVG(key) {
     const s = SPRITES[key];
     const [vx, vy, vw, vh] = s.viewBox.split(' ').map(Number);
@@ -747,9 +950,11 @@ function applyImgScale(scene, sprite, key, frameIdx = null) {
 
 // ===== Web Audio =====
 let audioCtx = null;
+let audioUnlocked = false;
+
 function initAudio() {
     if (audioCtx) {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
         return;
     }
     try {
@@ -759,6 +964,36 @@ function initAudio() {
             window.__audioCtx = audioCtx;
         }
     } catch (e) { /* no audio */ }
+}
+
+// Safari/iOS: проигрываем пустой буфер ВНУТРИ user-gesture обработчика —
+// без этого AudioContext остаётся suspended и звук не играет.
+function unlockAudioContext() {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+    }
+    if (audioUnlocked) return;
+    try {
+        const buffer = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        if (typeof source.start === 'function') source.start(0);
+        else if (typeof source.noteOn === 'function') source.noteOn(0); // старый WebKit
+        audioUnlocked = true;
+    } catch (e) { /* ignore */ }
+}
+
+// Любое первое взаимодействие — инициализация и разблокировка аудио.
+// Должно происходить ВНУТРИ user gesture, поэтому слушаем все варианты ввода.
+function bindAudioUnlock() {
+    const events = ['touchstart', 'touchend', 'mousedown', 'pointerdown', 'keydown', 'click'];
+    const handler = () => {
+        initAudio();
+        unlockAudioContext();
+    };
+    events.forEach(ev => document.addEventListener(ev, handler, { passive: true, capture: true }));
 }
 function playTone(freq, duration, when = 0, type = 'triangle', volume = 0.4) {
     if (!audioCtx) return;
@@ -1082,8 +1317,8 @@ class GameScene extends Phaser.Scene {
         this.cameras.main.setZoom(CAMERA_ZOOM);
 
         // Земля и река через Graphics
-        this.drawGround();
-        this.drawRiver();
+        this.drawTileGround();
+        this.drawTileRiver();
 
         // Мосты — угол вычисляется как тангенс реки + 90° (поперёк потока)
         BRIDGES.forEach(b => {
@@ -1387,6 +1622,86 @@ class GameScene extends Phaser.Scene {
                 this.correctAnswers,
                 this.fruits);
         });
+    }
+
+    drawTileRiver() {
+        // Анимация воды (создаём один раз)
+        if (!this.anims.exists('water-flow')) {
+            this.anims.create({
+                key: 'water-flow',
+                frames: this.anims.generateFrameNumbers('tile_water_anim', { start: 0, end: 3 }),
+                frameRate: 4,
+                repeat: -1
+            });
+        }
+        const path = window.__riverPath || [];
+        // 1) Сначала водяные тайлы
+        for (const cell of path) {
+            const k = cellKey(cell.c, cell.r);
+            if (bridgeCells.has(k)) continue; // под мостом всё равно поставим воду — иначе провал; см. ниже
+            const { x, y } = tileToScreen(cell.c, cell.r);
+            const sprite = this.add.sprite(x, y, 'tile_water_anim', 0);
+            sprite.setOrigin(0.5, 0.5);
+            sprite.setDepth(-9000 + cell.c + cell.r + 0.1); // чуть выше травы
+            sprite.play('water-flow');
+        }
+        // 2) Под мостами тоже вода — иначе через щель видно фон
+        for (const cell of (window.__bridgeCells || [])) {
+            const { x, y } = tileToScreen(cell.c, cell.r);
+            const water = this.add.sprite(x, y, 'tile_water_anim', 0);
+            water.setOrigin(0.5, 0.5);
+            water.setDepth(-9000 + cell.c + cell.r + 0.1);
+            water.play('water-flow');
+        }
+        // 3) Сами мосты поверх воды
+        const bridgeList = window.__bridgeCells || [];
+        for (let i = 0; i < bridgeList.length; i++) {
+            const cell = bridgeList[i];
+            const { x, y } = tileToScreen(cell.c, cell.r);
+            // Определим направление по соседям в pathе
+            const idx = path.findIndex(p => p.c === cell.c && p.r === cell.r);
+            const prev = idx > 0 ? path[idx - 1] : null;
+            const next = idx < path.length - 1 ? path[idx + 1] : null;
+            const key = bridgeTextureKeyFor(prev, cell, next);
+            const sprite = this.add.image(x, y, key);
+            sprite.setOrigin(0.5, 0.5);
+            sprite.setDepth(-9000 + cell.c + cell.r + 0.2); // поверх воды
+        }
+    }
+
+    drawTileGround() {
+        const variants = ['tile_grass_01', 'tile_grass_02', 'tile_grass_03', 'tile_grass_04'];
+        const tileDecors = ['decor_grass_tuft_01', 'decor_grass_tuft_02', 'decor_mushroom_red',
+                            'decor_mushroom_brown', 'decor_pebble_pile'];
+        for (let r = 0; r < TILE_GRID.rows; r++) {
+            for (let c = 0; c < TILE_GRID.cols; c++) {
+                const k = cellKey(c, r);
+                if (waterCells.has(k)) continue; // вода рисуется в drawTileRiver
+                const { x, y } = tileToScreen(c, r);
+
+                // 1) Базовая трава (случайный вариант)
+                const grassKey = variants[Math.floor(Math.random() * variants.length)];
+                const grass = this.add.image(x, y, grassKey);
+                grass.setOrigin(0.5, 0.5);
+                grass.setDepth(-9000 + r + c);
+
+                // 2) Переход grass↔water поверх, если есть водяные соседи
+                const tKey = transitionKeyForGrass(c, r, 'water');
+                if (tKey && this.textures.exists(tKey)) {
+                    const t = this.add.image(x, y, tKey);
+                    t.setOrigin(0.5, 0.5);
+                    t.setDepth(-9000 + r + c + 0.4);
+                }
+
+                // 3) Декорация на тайле (с шансом ~12%) — мухомор, пучок травы и т.п.
+                if (Math.random() < 0.12) {
+                    const dKey = tileDecors[Math.floor(Math.random() * tileDecors.length)];
+                    const decor = this.add.image(x, y - 8, dKey); // чуть приподнимем
+                    decor.setOrigin(0.5, 0.7);
+                    decor.setDepth(-8500 + r + c);
+                }
+            }
+        }
     }
 
     drawGround() {
@@ -1819,6 +2134,7 @@ function startPhaserAndGame() {
 
 // ===== UI bindings =====
 bindDpad();
+bindAudioUnlock();
 renderTitleAnkylo();
 renderLevelMenu();
 showScreen('start');
