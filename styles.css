@@ -215,6 +215,20 @@ h2 {
     font-size: 22px;
 }
 
+.hud-hearts {
+    gap: 4px;
+    padding: 8px 12px;
+}
+
+.hud-hearts .heart {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.hud-hearts .heart.empty {
+    filter: grayscale(1) opacity(0.45);
+}
+
 /* ==== Карта ==== */
 .map-wrap {
     flex: 1;

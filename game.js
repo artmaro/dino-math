@@ -508,7 +508,25 @@ const IMAGE_ASSETS = [
     { key: 'img-chest-open-full',  url: 'assets/09_chest_open_full.png',  maxDim: 256, crop: true, displayH: 60 },
     { key: 'img-chest-open-empty', url: 'assets/10_chest_open_empty.png', maxDim: 256, crop: true, displayH: 60 },
     { key: 'img-ankylo', url: 'assets/01_ankylosaurus_sprite_sheet_6x4.png',
-      scaleFactor: 0.5, spritesheet: { cols: 6, rows: 4 }, displayH: 110 }
+      scaleFactor: 0.5, spritesheet: { cols: 6, rows: 4 }, displayH: 110 },
+
+    // NPC-динозавры (walk-cycle 6×1)
+    { key: 'img-trex',    url: 'assets/11_npc_tyrannosaurus_walk_6x1.png',
+      scaleFactor: 0.4, spritesheet: { cols: 6, rows: 1 }, displayH: 110 },
+    { key: 'img-brachio', url: 'assets/12_npc_brachiosaurus_walk_6x1.png',
+      scaleFactor: 0.4, spritesheet: { cols: 6, rows: 1 }, displayH: 130 },
+    { key: 'img-spino',   url: 'assets/13_npc_spinosaurus_walk_6x1.png',
+      scaleFactor: 0.4, spritesheet: { cols: 6, rows: 1 }, displayH: 120 },
+
+    // Фрукты-пикапы для здоровья
+    { key: 'img-fruit-berry',     url: 'assets/14_fruit_berry.png',     maxDim: 200, crop: true, displayH: 32 },
+    { key: 'img-fruit-grape',     url: 'assets/15_fruit_grape.png',     maxDim: 200, crop: true, displayH: 32 },
+    { key: 'img-fruit-melon',     url: 'assets/16_fruit_melon.png',     maxDim: 200, crop: true, displayH: 32 },
+    { key: 'img-fruit-pineapple', url: 'assets/17_fruit_pineapple.png', maxDim: 200, crop: true, displayH: 32 },
+
+    // Сердечки для HUD
+    { key: 'img-heart-full',  url: 'assets/18_heart_full.png',  maxDim: 64, crop: true, displayH: 32 },
+    { key: 'img-heart-empty', url: 'assets/19_heart_empty.png', maxDim: 64, crop: true, displayH: 32 }
 ];
 
 function makeSpriteSVG(key) {
@@ -563,12 +581,75 @@ function cropCanvasToContent(canvas, padding = 2) {
     const ch = maxY - minY + 1 + padding * 2;
     const out = document.createElement('canvas');
     out.width = cw; out.height = ch;
-    out.getContext('2d').drawImage(canvas, -minX + padding, -minY + padding);
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(canvas, -minX + padding, -minY + padding);
     return out;
 }
 
 // Карта целевых высот в игре
 const IMG_DISPLAY_HEIGHTS = Object.fromEntries(IMAGE_ASSETS.map(a => [a.key, a.displayH || 60]));
+
+// Перестраивает спрайт-лист по bbox каждого кадра: находит точное содержимое
+// в каждой ячейке после magenta-removal и копирует его в новый sheet с
+// прозрачным gutter-ом. Это полностью исключает bleed соседних кадров —
+// даже если в исходнике кадры физически залазят за свои 256×256 границы.
+// Кадры центрируются по горизонтали и выравниваются по нижнему краю
+// (чтобы лапы дино оставались на одном уровне в анимации).
+function rebuildSpriteSheetByBbox(canvas, cols, rows, gutter = 6) {
+    const fw = Math.floor(canvas.width / cols);
+    const fh = Math.floor(canvas.height / rows);
+    const ctx = canvas.getContext('2d');
+    const cw = canvas.width;
+    const fullData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+    const boxes = [];
+    let maxW = 0, maxH = 0;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const sx = c * fw, sy = r * fh;
+            let minX = fw, minY = fh, maxX = -1, maxY = -1;
+            for (let y = 0; y < fh; y++) {
+                for (let x = 0; x < fw; x++) {
+                    const a = fullData[((sy + y) * cw + (sx + x)) * 4 + 3];
+                    if (a > 0) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            const bw = maxX >= minX ? maxX - minX + 1 : 0;
+            const bh = maxY >= minY ? maxY - minY + 1 : 0;
+            boxes.push({ sx, sy, minX, minY, bw, bh });
+            if (bw > maxW) maxW = bw;
+            if (bh > maxH) maxH = bh;
+        }
+    }
+
+    const cellW = maxW + gutter * 2;
+    const cellH = maxH + gutter * 2;
+    const out = document.createElement('canvas');
+    out.width = cols * cellW;
+    out.height = rows * cellH;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+
+    for (let i = 0; i < boxes.length; i++) {
+        const bb = boxes[i];
+        if (bb.bw === 0) continue;
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        const dCellX = c * cellW;
+        const dCellY = r * cellH;
+        const dx = dCellX + gutter + Math.floor((maxW - bb.bw) / 2);
+        const dy = dCellY + gutter + (maxH - bb.bh); // bottom-align
+        octx.drawImage(canvas, bb.sx + bb.minX, bb.sy + bb.minY, bb.bw, bb.bh, dx, dy, bb.bw, bb.bh);
+    }
+
+    return { canvas: out, cellW, cellH };
+}
 
 // Применяет нужный масштаб к спрайту (по высоте, с сохранением пропорций)
 function applyImgScale(scene, sprite, key, frameIdx = null) {
@@ -652,6 +733,17 @@ function hideModal(el) { el.classList.remove('active'); }
 function updateHUD(fruits, chestsOpened) {
     fruitCountEl.textContent = fruits;
     chestProgressEl.textContent = chestsOpened;
+}
+function updateHUDHearts(current, max) {
+    const el = document.getElementById('hud-hearts');
+    if (!el) return;
+    el.innerHTML = '';
+    for (let i = 0; i < max; i++) {
+        const span = document.createElement('span');
+        span.className = 'heart' + (i < current ? '' : ' empty');
+        span.textContent = i < current ? '❤️' : '🤍';
+        el.appendChild(span);
+    }
 }
 function renderTitleAnkylo() {
     const titleSvg = document.querySelector('.title-ankylo');
@@ -813,45 +905,50 @@ class BootScene extends Phaser.Scene {
             const img = new Image();
             img.onload = () => {
                 try {
+                    // Создаём canvas нужного размера и копируем без сглаживания —
+                    // иначе соседние кадры спрайт-листа размываются друг в друга
+                    // ещё до магенты и extrude, и потом эти артефакты проявляются.
                     let canvas;
+                    let w, h;
                     if (asset.scaleFactor) {
-                        const w = Math.round(img.naturalWidth * asset.scaleFactor);
-                        const h = Math.round(img.naturalHeight * asset.scaleFactor);
-                        canvas = document.createElement('canvas');
-                        canvas.width = w; canvas.height = h;
-                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        w = Math.round(img.naturalWidth * asset.scaleFactor);
+                        h = Math.round(img.naturalHeight * asset.scaleFactor);
                     } else if (asset.maxDim) {
                         const ratio = asset.maxDim / Math.max(img.naturalWidth, img.naturalHeight);
-                        const w = Math.round(img.naturalWidth * ratio);
-                        const h = Math.round(img.naturalHeight * ratio);
-                        canvas = document.createElement('canvas');
-                        canvas.width = w; canvas.height = h;
-                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        w = Math.round(img.naturalWidth * ratio);
+                        h = Math.round(img.naturalHeight * ratio);
                     } else {
-                        canvas = document.createElement('canvas');
-                        canvas.width = img.naturalWidth;
-                        canvas.height = img.naturalHeight;
-                        canvas.getContext('2d').drawImage(img, 0, 0);
+                        w = img.naturalWidth;
+                        h = img.naturalHeight;
                     }
+                    canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(img, 0, 0, w, h);
 
                     removeMagentaInPlace(canvas);
                     if (asset.crop) canvas = cropCanvasToContent(canvas);
 
                     if (asset.spritesheet) {
-                        const tex = this.textures.addCanvas(asset.key, canvas);
                         const cols = asset.spritesheet.cols;
                         const rows = asset.spritesheet.rows;
-                        const fw = Math.floor(canvas.width / cols);
-                        const fh = Math.floor(canvas.height / rows);
+                        // Полная пересборка по bbox: каждый кадр в своей чистой ячейке
+                        // с прозрачным gutter-ом. Соседи не задевают друг друга.
+                        const { canvas: rebuilt, cellW, cellH } = rebuildSpriteSheetByBbox(canvas, cols, rows, 8);
+                        const tex = this.textures.addCanvas(asset.key, rebuilt);
+                        tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
                         let idx = 0;
                         for (let r = 0; r < rows; r++) {
                             for (let c = 0; c < cols; c++) {
-                                tex.add(idx, 0, c * fw, r * fh, fw, fh);
+                                tex.add(idx, 0, c * cellW, r * cellH, cellW, cellH);
                                 idx++;
                             }
                         }
                     } else {
-                        this.textures.addCanvas(asset.key, canvas);
+                        const tex = this.textures.addCanvas(asset.key, canvas);
+                        tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
                     }
                     resolve();
                 } catch (e) {
@@ -883,6 +980,12 @@ class GameScene extends Phaser.Scene {
         this.walking = false;
         this.bobTime = 0;
         this.paused = false;
+        this.maxHealth = 5;
+        this.health = this.maxHealth;
+        this.invulnerableUntil = 0;
+        this.npcs = [];
+        this.pickups = [];
+        this.gameOverShown = false;
 
         // Генерация мира
         this.groundPatches = this.generateGroundPatches();
@@ -942,11 +1045,14 @@ class GameScene extends Phaser.Scene {
             sprite.setDepth(obs.y);
         });
 
-        // Сундуки (PNG)
+        // Сундуки (PNG): фиксируем единый scale, чтобы все 3 состояния были
+        // одного "корпусного" размера (открытый только тянется выше за счёт крышки).
+        const chestRefH = this.textures.get('img-chest-closed').getSourceImage().height;
+        this.chestScale = (IMG_DISPLAY_HEIGHTS['img-chest-closed'] || 60) / chestRefH;
         this.chestSprites = this.chests.map((c, i) => {
             const sprite = this.add.image(c.x, c.y, 'img-chest-closed');
-            sprite.setOrigin(0.5, 0.92);
-            applyImgScale(this, sprite, 'img-chest-closed');
+            sprite.setOrigin(0.5, 1.0);
+            sprite.setScale(this.chestScale);
             sprite.setDepth(c.y);
             sprite.setData('idx', i);
             return sprite;
@@ -981,9 +1087,14 @@ class GameScene extends Phaser.Scene {
         }
         this.dino.play('dino-idle');
 
+        // Спавн NPC-динозавров (1-2 штуки случайно из 3 типов) и фруктов-пикапов
+        this.spawnNPCs();
+        this.spawnPickups();
+
         // Невидимая цель для камеры — следит за логической позицией без bob-болтанки
         this.followTarget = this.add.rectangle(WORLD.start.x, WORLD.start.y, 1, 1).setAlpha(0);
         this.cameras.main.startFollow(this.followTarget, true, 0.18, 0.18);
+        this.cameras.main.setRoundPixels(true);
         this.cameras.main.centerOn(WORLD.start.x, WORLD.start.y);
 
         // Эмиттер салюта
@@ -1005,6 +1116,194 @@ class GameScene extends Phaser.Scene {
         });
 
         updateHUD(this.fruits, 0);
+        updateHUDHearts(this.health, this.maxHealth);
+    }
+
+    spawnNPCs() {
+        const types = shuffle(['trex', 'brachio', 'spino']).slice(0, 1 + Math.floor(Math.random() * 2));
+        types.forEach(type => {
+            let x, y, attempts = 0;
+            do {
+                attempts++;
+                x = WORLD.diamond.cx + (Math.random() - 0.5) * 2 * WORLD.diamond.hw * 0.8;
+                y = WORLD.diamond.cy + (Math.random() - 0.5) * 2 * WORLD.diamond.hh * 0.8;
+            } while ((!isInsideDiamond(x, y, 0.8) ||
+                      blockedByObstacle(x, y) ||
+                      dist(x, y, WORLD.start.x, WORLD.start.y) < 250) && attempts < 50);
+
+            const key = `img-${type}`;
+            const sprite = this.add.sprite(x, y, key, 0);
+            sprite.setOrigin(0.5, 1.0);
+            applyImgScale(this, sprite, key, 0);
+            sprite.setDepth(y);
+
+            const animKey = `${type}-walk`;
+            if (!this.anims.exists(animKey)) {
+                this.anims.create({
+                    key: animKey,
+                    frames: this.anims.generateFrameNumbers(key, { start: 0, end: 5 }),
+                    frameRate: 7,
+                    repeat: -1
+                });
+            }
+            sprite.play(animKey);
+
+            this.npcs.push({
+                type, x, y, sprite,
+                targetX: x, targetY: y,
+                speed: 0.07 + Math.random() * 0.04,
+                idleUntil: 0
+            });
+            this.pickNPCTarget(this.npcs[this.npcs.length - 1]);
+        });
+    }
+
+    pickNPCTarget(npc) {
+        for (let i = 0; i < 50; i++) {
+            const x = WORLD.diamond.cx + (Math.random() - 0.5) * 2 * WORLD.diamond.hw * 0.8;
+            const y = WORLD.diamond.cy + (Math.random() - 0.5) * 2 * WORLD.diamond.hh * 0.8;
+            if (!isInsideDiamond(x, y, 0.8)) continue;
+            if (blockedByObstacle(x, y)) continue;
+            if (dist(x, y, npc.x, npc.y) < 200) continue;
+            npc.targetX = x;
+            npc.targetY = y;
+            return;
+        }
+    }
+
+    updateNPCs(dt, time) {
+        for (const npc of this.npcs) {
+            if (npc.idleUntil > time) continue;
+            const dx = npc.targetX - npc.x;
+            const dy = npc.targetY - npc.y;
+            const d = Math.hypot(dx, dy);
+            if (d < 8) {
+                this.pickNPCTarget(npc);
+                npc.idleUntil = time + 400 + Math.random() * 600;
+                continue;
+            }
+            const step = npc.speed * dt;
+            const nx = npc.x + (dx / d) * step;
+            const ny = npc.y + (dy / d) * step;
+            // Если уперлись в препятствие — выберем новую цель
+            if (blockedByObstacle(nx, ny) || !isInsideDiamond(nx, ny, 0.85)) {
+                this.pickNPCTarget(npc);
+                continue;
+            }
+            npc.x = nx;
+            npc.y = ny;
+            // Поворот по направлению движения
+            if (dx > 1) npc.sprite.setFlipX(false);
+            else if (dx < -1) npc.sprite.setFlipX(true);
+            npc.sprite.x = npc.x;
+            npc.sprite.y = npc.y;
+            npc.sprite.setDepth(npc.y);
+        }
+    }
+
+    spawnPickups() {
+        const types = ['berry', 'grape', 'melon', 'pineapple'];
+        const target = 6;
+        let attempts = 0;
+        while (this.pickups.length < target && attempts < 500) {
+            attempts++;
+            const x = WORLD.diamond.cx + (Math.random() - 0.5) * 2 * WORLD.diamond.hw * 0.85;
+            const y = WORLD.diamond.cy + (Math.random() - 0.5) * 2 * WORLD.diamond.hh * 0.85;
+            if (!isInsideDiamond(x, y, 0.85)) continue;
+            if (blockedByObstacle(x, y)) continue;
+            if (distToRiver(x, y) < RIVER_HALF_WIDTH + 20) continue;
+            if (dist(x, y, WORLD.start.x, WORLD.start.y) < 80) continue;
+            if (this.chests.some(c => dist(x, y, c.x, c.y) < 50)) continue;
+            if (this.pickups.some(p => dist(x, y, p.x, p.y) < 100)) continue;
+
+            const type = types[Math.floor(Math.random() * types.length)];
+            const key = `img-fruit-${type}`;
+            const sprite = this.add.image(x, y, key);
+            sprite.setOrigin(0.5, 0.95);
+            applyImgScale(this, sprite, key);
+            sprite.setDepth(y);
+            this.pickups.push({ x, y, type, sprite });
+        }
+    }
+
+    checkPickups() {
+        for (let i = this.pickups.length - 1; i >= 0; i--) {
+            const p = this.pickups[i];
+            if (dist(this.dinoLogicalX, this.dinoLogicalY, p.x, p.y) < 38) {
+                this.tweens.add({
+                    targets: p.sprite,
+                    y: p.sprite.y - 30,
+                    alpha: 0,
+                    scale: p.sprite.scale * 1.4,
+                    duration: 350,
+                    onComplete: () => p.sprite.destroy()
+                });
+                this.pickups.splice(i, 1);
+                if (this.health < this.maxHealth) {
+                    this.health++;
+                    updateHUDHearts(this.health, this.maxHealth);
+                }
+                playTone(880, 0.12, 0, 'triangle', 0.35);
+                playTone(1320, 0.18, 0.08, 'triangle', 0.35);
+            }
+        }
+    }
+
+    checkNPCDamage(time) {
+        if (this.invulnerableUntil > time) return;
+        for (const npc of this.npcs) {
+            if (dist(this.dinoLogicalX, this.dinoLogicalY, npc.x, npc.y) < 50) {
+                this.takeDamage(npc, time);
+                return;
+            }
+        }
+    }
+
+    takeDamage(npc, time) {
+        this.health -= 1;
+        this.invulnerableUntil = time + 1200;
+        playWrong();
+        updateHUDHearts(this.health, this.maxHealth);
+        // Отскок дино от NPC
+        const dx = this.dinoLogicalX - npc.x;
+        const dy = this.dinoLogicalY - npc.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const knock = 70;
+        const nx = this.dinoLogicalX + (dx / d) * knock;
+        const ny = this.dinoLogicalY + (dy / d) * knock;
+        if (isInsideDiamond(nx, ny, 0.97) && !blockedByObstacle(nx, ny)) {
+            this.dinoLogicalX = nx;
+            this.dinoLogicalY = ny;
+            this.followTarget.x = nx;
+            this.followTarget.y = ny;
+        }
+        // Мигание дино (красный тинт)
+        this.dino.setTint(0xff5555);
+        this.tweens.add({
+            targets: this.dino,
+            alpha: { from: 1, to: 0.3 },
+            yoyo: true,
+            repeat: 4,
+            duration: 120,
+            onComplete: () => { this.dino.clearTint(); this.dino.setAlpha(1); }
+        });
+
+        if (this.health <= 0) this.gameOver();
+    }
+
+    gameOver() {
+        if (this.gameOverShown) return;
+        this.gameOverShown = true;
+        this.paused = true;
+        playTone(330, 0.3, 0.0, 'sine', 0.4);
+        playTone(220, 0.5, 0.18, 'sine', 0.4);
+        this.time.delayedCall(900, () => {
+            showEndScreen(0,
+                'Потерял все сердечки',
+                'Динозавры были слишком быстрыми! Попробуй ещё раз.',
+                this.correctAnswers,
+                this.fruits);
+        });
     }
 
     drawGround() {
@@ -1225,6 +1524,9 @@ class GameScene extends Phaser.Scene {
         if (this.paused) return;
         this.handleMovement(delta);
         this.applyDinoBob(time);
+        this.updateNPCs(delta, time);
+        this.checkPickups();
+        this.checkNPCDamage(time);
         this.checkChestProximity();
         this.checkCaveProximity();
     }
@@ -1317,11 +1619,13 @@ class GameScene extends Phaser.Scene {
             });
 
             c.opened = true;
-            // На правильный ответ сундук с золотом, на неверный — пустой
+            // На правильный ответ — сундук с золотом, на неверный — пустой.
+            // Используем тот же scale и origin, что у закрытого сундука,
+            // чтобы корпус не "прыгал" в размере при смене кадра.
             const openKey = isCorrect ? 'img-chest-open-full' : 'img-chest-open-empty';
             this.chestSprites[idx].setTexture(openKey);
-            this.chestSprites[idx].setOrigin(0.5, 0.92);
-            applyImgScale(this, this.chestSprites[idx], openKey);
+            this.chestSprites[idx].setOrigin(0.5, 1.0);
+            this.chestSprites[idx].setScale(this.chestScale);
 
             // Подсветить пещеру если все собраны
             this.updateCaveGlow();

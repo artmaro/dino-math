@@ -285,6 +285,123 @@ test.describe('Dino Math game — smoke', () => {
         expect(fb).toBe(0);
     });
 
+    test('chest keeps the same scale after opening', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        const correctAnswer = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            const c = s.chests[0];
+            s.dinoLogicalX = c.x + 10;
+            s.dinoLogicalY = c.y + 10;
+            s.followTarget.x = s.dinoLogicalX;
+            s.followTarget.y = s.dinoLogicalY;
+            return c.correctAnswer;
+        });
+
+        const beforeScale = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            return { x: s.chestSprites[0].scaleX, y: s.chestSprites[0].scaleY };
+        });
+
+        await expect(page.locator('#modal-question')).toHaveClass(/active/, { timeout: 3000 });
+        await page.locator('.answer-btn', { hasText: String(correctAnswer) }).click();
+        await page.waitForTimeout(600);
+
+        const afterScale = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            return { x: s.chestSprites[0].scaleX, y: s.chestSprites[0].scaleY };
+        });
+
+        expect(afterScale.x).toBeCloseTo(beforeScale.x, 6);
+        expect(afterScale.y).toBeCloseTo(beforeScale.y, 6);
+    });
+
+    test('level spawns NPC dinos and fruit pickups', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        const stats = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            return {
+                npcCount: s.npcs.length,
+                pickupCount: s.pickups.length,
+                health: s.health,
+                maxHealth: s.maxHealth,
+                npcTypes: s.npcs.map(n => n.type)
+            };
+        });
+        expect(stats.npcCount).toBeGreaterThanOrEqual(1);
+        expect(stats.npcCount).toBeLessThanOrEqual(2);
+        expect(stats.pickupCount).toBeGreaterThan(0);
+        expect(stats.health).toBe(5);
+        expect(stats.maxHealth).toBe(5);
+        for (const t of stats.npcTypes) {
+            expect(['trex', 'brachio', 'spino']).toContain(t);
+        }
+    });
+
+    test('HUD renders 5 hearts at start', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        const hearts = await page.locator('#hud-hearts .heart').count();
+        expect(hearts).toBe(5);
+        const fullHearts = await page.locator('#hud-hearts .heart:not(.empty)').count();
+        expect(fullHearts).toBe(5);
+    });
+
+    test('eating a fruit increases health when below max', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        // Снимаем 2 жизни и телепортируемся к фрукту
+        const expectedHealth = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            s.health = 3;
+            const p = s.pickups[0];
+            s.dinoLogicalX = p.x;
+            s.dinoLogicalY = p.y;
+            s.followTarget.x = p.x;
+            s.followTarget.y = p.y;
+            return 4; // ожидаем восстановление до 4
+        });
+        await page.waitForTimeout(400);
+        const after = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            return { health: s.health, pickupsLeft: s.pickups.length };
+        });
+        expect(after.health).toBe(expectedHealth);
+    });
+
+    test('NPC collision damages player', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            const npc = s.npcs[0];
+            s.dinoLogicalX = npc.x;
+            s.dinoLogicalY = npc.y;
+            s.followTarget.x = npc.x;
+            s.followTarget.y = npc.y;
+            s.invulnerableUntil = 0;
+        });
+        await page.waitForTimeout(300);
+        const after = await page.evaluate(() => window.__game.scene.getScene('Game').health);
+        expect(after).toBe(4);
+    });
+
     test('correct answer awards a fruit and closes modal', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
