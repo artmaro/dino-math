@@ -16,7 +16,8 @@ const SHIFT_Y = 300;
 const WORLD = {
     w: 1800 + SHIFT_X * 2,    // 2400
     h: 1100 + SHIFT_Y * 2,    // 1700
-    diamond: { cx: 900 + SHIFT_X, cy: 550 + SHIFT_Y, hw: 850, hh: 425 },
+    // hw/hh подобраны под 8×8 tile grid: ромб тайлов имеет полу-диагонали 896×448
+    diamond: { cx: 900 + SHIFT_X, cy: 550 + SHIFT_Y, hw: 896, hh: 448 },
     cave:    { x: 900 + SHIFT_X, y: 165 + SHIFT_Y },
     start:   { x: 900 + SHIFT_X, y: 935 + SHIFT_Y }
 };
@@ -27,59 +28,6 @@ let RIVER_POINTS = [];
 let BRIDGES = [];
 let OBSTACLES = [];
 const RIVER_HALF_WIDTH = 36;
-
-function generateRiverPoints() {
-    const d = WORLD.diamond;
-    // Случайная ориентация: горизонтальная (60%) или вертикальная
-    const horizontal = Math.random() < 0.6;
-    let start, end;
-    if (horizontal) {
-        start = { x: d.cx - d.hw - 60, y: d.cy + (Math.random() - 0.5) * d.hh * 0.9 };
-        end   = { x: d.cx + d.hw + 60, y: d.cy + (Math.random() - 0.5) * d.hh * 0.9 };
-    } else {
-        start = { x: d.cx + (Math.random() - 0.5) * d.hw * 0.9, y: d.cy - d.hh - 60 };
-        end   = { x: d.cx + (Math.random() - 0.5) * d.hw * 0.9, y: d.cy + d.hh + 60 };
-    }
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const perpX = -dy / len;
-    const perpY = dx / len;
-
-    const numMid = 5 + Math.floor(Math.random() * 3); // 5..7 промежуточных
-    const pts = [start];
-    for (let i = 1; i <= numMid; i++) {
-        const t = i / (numMid + 1);
-        const baseX = start.x + dx * t;
-        const baseY = start.y + dy * t;
-        // Огибающая sin: отклонение максимально в середине, мягко затухает к краям
-        const envelope = Math.sin(t * Math.PI) * 220;
-        const offset = (Math.random() - 0.5) * 2 * envelope;
-        pts.push({ x: baseX + perpX * offset, y: baseY + perpY * offset });
-    }
-    pts.push(end);
-    return pts;
-}
-
-function generateBridges(riverPts) {
-    // Два моста на разных участках реки
-    const out = [];
-    const fractions = [
-        0.22 + Math.random() * 0.12,
-        0.62 + Math.random() * 0.12
-    ];
-    for (const f of fractions) {
-        const idx = Math.max(0, Math.min(riverPts.length - 2, Math.floor((riverPts.length - 1) * f)));
-        const a = riverPts[idx];
-        const b = riverPts[idx + 1];
-        out.push({
-            x: (a.x + b.x) / 2,
-            y: (a.y + b.y) / 2,
-            w: 110, h: 110
-        });
-    }
-    return out;
-}
 
 function generateObstacles() {
     const out = [];
@@ -121,10 +69,14 @@ function regenerateLevelGeometry() {
     // Тайловая река: набор ячеек + мостов
     waterCells.clear();
     bridgeCells.clear();
+    dirtCells.clear();
     const riverPath = generateRiverCellPath();
     riverPath.forEach(p => waterCells.add(cellKey(p.c, p.r)));
     const bridges = selectBridgeCells(riverPath);
     bridges.forEach(p => bridgeCells.add(cellKey(p.c, p.r)));
+    // Грунтовые полянки (после реки — чтобы не пересекать воду)
+    const dirts = generateDirtPatches();
+    dirts.forEach(k => dirtCells.add(k));
 
     // Заполняем legacy-структуры (RIVER_POINTS / BRIDGES) из тайловой реки —
     // их используют генераторы chests/decor/obstacles и тесты.
@@ -292,18 +244,6 @@ function distToRiver(x, y) {
     return min;
 }
 
-function riverTangentAt(x, y) {
-    // Возвращает угол реки в радианах в точке, ближайшей к (x, y)
-    let bestI = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < RIVER_POINTS.length - 1; i++) {
-        const d = distToSegment(x, y, RIVER_POINTS[i], RIVER_POINTS[i + 1]);
-        if (d < bestD) { bestD = d; bestI = i; }
-    }
-    const a = RIVER_POINTS[bestI];
-    const b = RIVER_POINTS[bestI + 1];
-    return Math.atan2(b.y - a.y, b.x - a.x);
-}
 function isOnBridge(x, y) {
     for (const b of BRIDGES) {
         if (Math.abs(x - b.x) < b.w / 2 && Math.abs(y - b.y) < b.h / 2) return true;
@@ -702,6 +642,7 @@ function inGrid(c, r) {
 // Сеты ячеек уровня — заполняются в regenerateLevelGeometry()
 const waterCells = new Set();
 const bridgeCells = new Set();
+const dirtCells = new Set();
 const cellKey = (c, r) => `${c},${r}`;
 
 function isWaterCellAt(x, y) {
@@ -766,6 +707,44 @@ function generateRiverCellPath() {
     return path;
 }
 
+// Случайные грунтовые «кляксы» — 0..2 шт по 2-5 ячеек каждая.
+// Не накладываются на воду и углы (cave/start).
+function generateDirtPatches() {
+    const out = new Set();
+    const numPatches = Math.random() < 0.4 ? 0 : (Math.random() < 0.6 ? 1 : 2);
+    for (let p = 0; p < numPatches; p++) {
+        // Ищем стартовую клетку
+        let start = null, attempts = 0;
+        while (attempts < 40) {
+            attempts++;
+            const c = 1 + Math.floor(Math.random() * (TILE_GRID.cols - 2));
+            const r = 1 + Math.floor(Math.random() * (TILE_GRID.rows - 2));
+            const k = cellKey(c, r);
+            if (waterCells.has(k) || out.has(k)) continue;
+            start = { c, r };
+            break;
+        }
+        if (!start) continue;
+        out.add(cellKey(start.c, start.r));
+        // Случайный «рост» кляксы
+        const size = 2 + Math.floor(Math.random() * 4);
+        let cur = start;
+        for (let i = 0; i < size; i++) {
+            const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            const [dc, dr] = dirs[Math.floor(Math.random() * 4)];
+            const nc = cur.c + dc, nr = cur.r + dr;
+            const k = cellKey(nc, nr);
+            if (!inGrid(nc, nr)) continue;
+            if (waterCells.has(k) || out.has(k)) continue;
+            // Не на углах cave/start
+            if ((nc === 0 && nr === 0) || (nc === TILE_GRID.cols - 1 && nr === TILE_GRID.rows - 1)) continue;
+            out.add(k);
+            cur = { c: nc, r: nr };
+        }
+    }
+    return out;
+}
+
 // Выбираем 2 ячейки моста на пути (≈30% и ≈70%, но не самые крайние)
 function selectBridgeCells(path) {
     if (path.length < 4) return [];
@@ -774,9 +753,10 @@ function selectBridgeCells(path) {
     return [path[idx1], path[idx2]].filter(Boolean);
 }
 
-// Маска соседей (NW/NE/SE/SW) → ключ тайла-перехода grass↔water
+// Маска соседей (NW/NE/SE/SW) → ключ тайла-перехода grass↔(water|dirt)
 function transitionKeyForGrass(c, r, kind = 'water') {
-    const isOther = (cc, rr) => waterCells.has(cellKey(cc, rr));
+    const targetSet = kind === 'water' ? waterCells : dirtCells;
+    const isOther = (cc, rr) => targetSet.has(cellKey(cc, rr));
     const nw = isOther(c - 1, r);
     const ne = isOther(c, r - 1);
     const se = isOther(c + 1, r);
@@ -1306,7 +1286,6 @@ class GameScene extends Phaser.Scene {
         this.gameOverShown = false;
 
         // Генерация мира
-        this.groundPatches = this.generateGroundPatches();
         this.chests = this.generateChests();
         this.decorations = this.generateDecorations(this.chests);
         this.borderForest = this.generateBorderForest();
@@ -1320,15 +1299,7 @@ class GameScene extends Phaser.Scene {
         this.drawTileGround();
         this.drawTileRiver();
 
-        // Мосты — угол вычисляется как тангенс реки + 90° (поперёк потока)
-        BRIDGES.forEach(b => {
-            const sprite = this.add.image(b.x, b.y, 'bridge');
-            const o = spriteOrigin('bridge');
-            sprite.setOrigin(o.x, o.y);
-            const tangent = riverTangentAt(b.x, b.y);
-            sprite.setRotation(tangent + Math.PI / 2);
-            sprite.setDepth(b.y);
-        });
+        // Мосты теперь рисуются как тайлы в drawTileRiver()
 
         // Лес-граница (плотный ряд PNG-деревьев в кольце вокруг ромба)
         this.borderForest.forEach(t => {
@@ -1635,15 +1606,21 @@ class GameScene extends Phaser.Scene {
             });
         }
         const path = window.__riverPath || [];
-        // 1) Сначала водяные тайлы
+        const playWithStagger = (sprite, c, r) => {
+            sprite.play('water-flow');
+            // Сдвигаем фазу анимации, чтобы соседние тайлы не были синхронны
+            const phase = ((c + r * 3) % 4) * 0.25;
+            sprite.anims.setProgress(phase);
+        };
+        // 1) Сначала водяные тайлы (без мостов)
         for (const cell of path) {
             const k = cellKey(cell.c, cell.r);
-            if (bridgeCells.has(k)) continue; // под мостом всё равно поставим воду — иначе провал; см. ниже
+            if (bridgeCells.has(k)) continue;
             const { x, y } = tileToScreen(cell.c, cell.r);
             const sprite = this.add.sprite(x, y, 'tile_water_anim', 0);
             sprite.setOrigin(0.5, 0.5);
-            sprite.setDepth(-9000 + cell.c + cell.r + 0.1); // чуть выше травы
-            sprite.play('water-flow');
+            sprite.setDepth(-9000 + cell.c + cell.r + 0.1);
+            playWithStagger(sprite, cell.c, cell.r);
         }
         // 2) Под мостами тоже вода — иначе через щель видно фон
         for (const cell of (window.__bridgeCells || [])) {
@@ -1651,7 +1628,7 @@ class GameScene extends Phaser.Scene {
             const water = this.add.sprite(x, y, 'tile_water_anim', 0);
             water.setOrigin(0.5, 0.5);
             water.setDepth(-9000 + cell.c + cell.r + 0.1);
-            water.play('water-flow');
+            playWithStagger(water, cell.c, cell.r);
         }
         // 3) Сами мосты поверх воды
         const bridgeList = window.__bridgeCells || [];
@@ -1670,7 +1647,8 @@ class GameScene extends Phaser.Scene {
     }
 
     drawTileGround() {
-        const variants = ['tile_grass_01', 'tile_grass_02', 'tile_grass_03', 'tile_grass_04'];
+        const grassVariants = ['tile_grass_01', 'tile_grass_02', 'tile_grass_03', 'tile_grass_04'];
+        const dirtVariants = ['tile_dirt_01', 'tile_dirt_02'];
         const tileDecors = ['decor_grass_tuft_01', 'decor_grass_tuft_02', 'decor_mushroom_red',
                             'decor_mushroom_brown', 'decor_pebble_pile'];
         for (let r = 0; r < TILE_GRID.rows; r++) {
@@ -1678,154 +1656,42 @@ class GameScene extends Phaser.Scene {
                 const k = cellKey(c, r);
                 if (waterCells.has(k)) continue; // вода рисуется в drawTileRiver
                 const { x, y } = tileToScreen(c, r);
+                const isDirt = dirtCells.has(k);
 
-                // 1) Базовая трава (случайный вариант)
-                const grassKey = variants[Math.floor(Math.random() * variants.length)];
-                const grass = this.add.image(x, y, grassKey);
-                grass.setOrigin(0.5, 0.5);
-                grass.setDepth(-9000 + r + c);
+                // 1) Базовая поверхность: grass или dirt
+                const baseKey = isDirt
+                    ? dirtVariants[Math.floor(Math.random() * dirtVariants.length)]
+                    : grassVariants[Math.floor(Math.random() * grassVariants.length)];
+                const base = this.add.image(x, y, baseKey);
+                base.setOrigin(0.5, 0.5);
+                base.setDepth(-9000 + r + c);
 
-                // 2) Переход grass↔water поверх, если есть водяные соседи
-                const tKey = transitionKeyForGrass(c, r, 'water');
-                if (tKey && this.textures.exists(tKey)) {
-                    const t = this.add.image(x, y, tKey);
-                    t.setOrigin(0.5, 0.5);
-                    t.setDepth(-9000 + r + c + 0.4);
+                if (!isDirt) {
+                    // 2) Переходы для травы (только для grass-ячеек):
+                    //    сначала water (если есть водяные соседи), потом dirt (если есть dirt-соседи).
+                    const wKey = transitionKeyForGrass(c, r, 'water');
+                    if (wKey && this.textures.exists(wKey)) {
+                        const t = this.add.image(x, y, wKey);
+                        t.setOrigin(0.5, 0.5);
+                        t.setDepth(-9000 + r + c + 0.4);
+                    }
+                    const dKey = transitionKeyForGrass(c, r, 'dirt');
+                    if (dKey && this.textures.exists(dKey)) {
+                        const t = this.add.image(x, y, dKey);
+                        t.setOrigin(0.5, 0.5);
+                        t.setDepth(-9000 + r + c + 0.5);
+                    }
                 }
 
-                // 3) Декорация на тайле (с шансом ~12%) — мухомор, пучок травы и т.п.
-                if (Math.random() < 0.12) {
-                    const dKey = tileDecors[Math.floor(Math.random() * tileDecors.length)];
-                    const decor = this.add.image(x, y - 8, dKey); // чуть приподнимем
+                // 3) Декорация на травяном тайле (с шансом ~12%)
+                if (!isDirt && Math.random() < 0.12) {
+                    const decKey = tileDecors[Math.floor(Math.random() * tileDecors.length)];
+                    const decor = this.add.image(x, y - 8, decKey);
                     decor.setOrigin(0.5, 0.7);
                     decor.setDepth(-8500 + r + c);
                 }
             }
         }
-    }
-
-    drawGround() {
-        const g = this.add.graphics();
-        g.setDepth(-2000);
-        const d = WORLD.diamond;
-        const top = { x: d.cx, y: d.cy - d.hh };
-        const right = { x: d.cx + d.hw, y: d.cy };
-        const bottom = { x: d.cx, y: d.cy + d.hh };
-        const left = { x: d.cx - d.hw, y: d.cy };
-
-        // Главный ромб
-        g.fillStyle(0x6db344, 1);
-        g.fillPoints([top, right, bottom, left], true);
-
-        // Светлый верхний треугольник (для иллюзии освещения)
-        g.fillStyle(0x9ce263, 0.35);
-        g.fillPoints([top, right, left], true);
-
-        // Тёмный нижний треугольник (тень)
-        g.fillStyle(0x3f8a25, 0.35);
-        g.fillPoints([right, bottom, left], true);
-
-        // Граница ромба
-        g.lineStyle(3, 0x2a5e18, 1);
-        g.beginPath();
-        g.moveTo(top.x, top.y);
-        g.lineTo(right.x, right.y);
-        g.lineTo(bottom.x, bottom.y);
-        g.lineTo(left.x, left.y);
-        g.closePath();
-        g.strokePath();
-
-        // Случайные пятна (свет/тень)
-        this.groundPatches.forEach(p => {
-            const colour = p.kind === 'light' ? 0xa8e07a : 0x3f8a25;
-            const alpha = p.kind === 'light' ? 0.18 : 0.22;
-            g.fillStyle(colour, alpha);
-            g.fillPoints([
-                { x: p.x, y: p.y - p.h },
-                { x: p.x + p.w, y: p.y },
-                { x: p.x, y: p.y + p.h },
-                { x: p.x - p.w, y: p.y }
-            ], true);
-        });
-    }
-
-    drawRiver() {
-        const g = this.add.graphics();
-        g.setDepth(-1500);
-
-        // Гладкая кривая через опорные точки
-        const path = new Phaser.Curves.Path(RIVER_POINTS[0].x, RIVER_POINTS[0].y);
-        for (let i = 1; i < RIVER_POINTS.length - 1; i++) {
-            const p = RIVER_POINTS[i];
-            const next = RIVER_POINTS[i + 1];
-            const mx = (p.x + next.x) / 2;
-            const my = (p.y + next.y) / 2;
-            path.quadraticBezierTo(mx, my, p.x, p.y);
-        }
-        const last = RIVER_POINTS[RIVER_POINTS.length - 1];
-        path.lineTo(last.x, last.y);
-
-        // Берег с грязью (тёмная зелень + коричневый ободок)
-        g.lineStyle(RIVER_HALF_WIDTH * 2 + 26, 0x4a6a26, 0.55);
-        path.draw(g, 96);
-        g.lineStyle(RIVER_HALF_WIDTH * 2 + 14, 0x8b6f3d, 0.7);
-        path.draw(g, 96);
-
-        // Тёмная глубокая вода (внешний край)
-        g.lineStyle(RIVER_HALF_WIDTH * 2 + 2, 0x1f5680, 1);
-        path.draw(g, 96);
-        // Средний слой воды
-        g.lineStyle(RIVER_HALF_WIDTH * 2 - 6, 0x4895c4, 1);
-        path.draw(g, 96);
-        // Светлый верх воды
-        g.lineStyle(RIVER_HALF_WIDTH * 2 - 18, 0x7fc3e3, 1);
-        path.draw(g, 96);
-        // Самый светлый блик в центре
-        g.lineStyle(RIVER_HALF_WIDTH * 2 - 32, 0xc4e7f4, 0.7);
-        path.draw(g, 96);
-
-        // Рябь — раскидываем мелкие овалы вдоль русла со смещением от центра
-        const sampleN = 80;
-        for (let i = 0; i < sampleN; i++) {
-            const t = i / sampleN;
-            const p = path.getPoint(t);
-            if (!p) continue;
-            const t2 = Math.min(1, t + 0.005);
-            const p2 = path.getPoint(t2);
-            if (!p2) continue;
-            const tx = p2.x - p.x, ty = p2.y - p.y;
-            const tlen = Math.hypot(tx, ty) || 1;
-            // Нормаль (перпендикуляр) к течению
-            const nx = -ty / tlen, ny = tx / tlen;
-            const offset = (Math.random() - 0.5) * (RIVER_HALF_WIDTH * 1.5);
-            const rx = p.x + nx * offset;
-            const ry = p.y + ny * offset;
-            // Овал-блик ориентирован вдоль течения
-            const angle = Math.atan2(ty, tx);
-            g.fillStyle(0xffffff, 0.35 + Math.random() * 0.25);
-            // Phaser fillEllipse не поворачивает, делаем линию-блик
-            const len = 4 + Math.random() * 8;
-            const x1 = rx - Math.cos(angle) * len / 2;
-            const y1 = ry - Math.sin(angle) * len / 2;
-            const x2 = rx + Math.cos(angle) * len / 2;
-            const y2 = ry + Math.sin(angle) * len / 2;
-            g.lineStyle(1.5 + Math.random(), 0xffffff, 0.5 + Math.random() * 0.4);
-            g.lineBetween(x1, y1, x2, y2);
-        }
-    }
-
-    generateGroundPatches() {
-        const patches = [];
-        let attempts = 0;
-        while (patches.length < 45 && attempts < 500) {
-            attempts++;
-            const x = WORLD.diamond.cx + (Math.random() - 0.5) * 2 * WORLD.diamond.hw * 0.92;
-            const y = WORLD.diamond.cy + (Math.random() - 0.5) * 2 * WORLD.diamond.hh * 0.92;
-            if (!isInsideDiamond(x, y, 0.94)) continue;
-            patches.push({ x, y, w: 50 + Math.random() * 60, h: 25 + Math.random() * 25,
-                           kind: Math.random() < 0.5 ? 'light' : 'dark' });
-        }
-        return patches;
     }
 
     generateChests() {
@@ -1882,7 +1748,7 @@ class GameScene extends Phaser.Scene {
             if (dist(x, y, WORLD.start.x, WORLD.start.y) < 90) continue;
             if (chests.some(c => dist(x, y, c.x, c.y) < 70)) continue;
             if (decor.some(d => dist(x, y, d.x, d.y) < 80)) continue;
-            if (distToRiver(x, y) < RIVER_HALF_WIDTH + 8) continue;
+            if (isWaterCellAt(x, y)) continue;
             if (OBSTACLES.some(o => dist(x, y, o.x, o.y) < o.r + 25)) continue;
             const v = pool[Math.floor(Math.random() * pool.length)];
             decor.push({ x, y, ...v });
