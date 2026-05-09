@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анкилозавр и сундуки с задачками</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game">
+
+        <!-- Стартовый экран -->
+        <section id="screen-start" class="screen active">
+            <div class="card">
+                <svg class="title-ankylo" viewBox="-70 -32 130 50"></svg>
+                <h1>Анкилозавр и сундуки с задачками</h1>
+                <p class="description">
+                    Помоги маленькому анкилозавру найти все сундуки,
+                    решить задачки и дойти до выхода-пещеры!
+                </p>
+                <button id="btn-start" class="big-button primary">Начать игру</button>
+            </div>
+        </section>
+
+        <!-- Игровой экран -->
+        <section id="screen-play" class="screen">
+            <header class="hud">
+                <div class="hud-item">
+                    <span class="hud-icon">🍎</span>
+                    <span>Фрукты: <span id="fruit-count">0</span> / 10</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-icon">📦</span>
+                    <span>Сундуки: <span id="chest-progress">0</span> / 10</span>
+                </div>
+            </header>
+
+            <div class="map-wrap">
+                <svg id="world" viewBox="0 0 800 480" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        <linearGradient id="grass-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#9ce263"/>
+                            <stop offset="55%" stop-color="#6db344"/>
+                            <stop offset="100%" stop-color="#3f8a25"/>
+                        </linearGradient>
+                        <radialGradient id="ground-shine" cx="35%" cy="30%" r="60%">
+                            <stop offset="0%" stop-color="rgba(255,255,200,0.25)"/>
+                            <stop offset="100%" stop-color="rgba(255,255,200,0)"/>
+                        </radialGradient>
+                        <radialGradient id="ground-vignette" cx="50%" cy="50%" r="55%">
+                            <stop offset="75%" stop-color="rgba(0,0,0,0)"/>
+                            <stop offset="100%" stop-color="rgba(20,40,10,0.4)"/>
+                        </radialGradient>
+                        <pattern id="iso-grid" width="120" height="60" patternUnits="userSpaceOnUse">
+                            <path d="M 60 0 L 120 30 L 60 60 L 0 30 Z"
+                                  fill="none" stroke="#3a7a25" stroke-width="0.6" opacity="0.35"/>
+                        </pattern>
+                        <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#7fcfee"/>
+                            <stop offset="100%" stop-color="#3f8acf"/>
+                        </linearGradient>
+                        <linearGradient id="water-edge" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#5fb6df"/>
+                            <stop offset="100%" stop-color="#2d6da3"/>
+                        </linearGradient>
+                        <linearGradient id="bark-grad" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stop-color="#5b3614"/>
+                            <stop offset="50%" stop-color="#7a4f1f"/>
+                            <stop offset="100%" stop-color="#5b3614"/>
+                        </linearGradient>
+                        <radialGradient id="leaves-grad" cx="35%" cy="30%" r="70%">
+                            <stop offset="0%" stop-color="#6dc54a"/>
+                            <stop offset="60%" stop-color="#3f8a25"/>
+                            <stop offset="100%" stop-color="#2a5e18"/>
+                        </radialGradient>
+                        <radialGradient id="leaves-grad2" cx="35%" cy="30%" r="70%">
+                            <stop offset="0%" stop-color="#7ad06a"/>
+                            <stop offset="60%" stop-color="#46963a"/>
+                            <stop offset="100%" stop-color="#1f4f10"/>
+                        </radialGradient>
+                        <radialGradient id="rock-grad" cx="35%" cy="30%" r="70%">
+                            <stop offset="0%" stop-color="#c4c8cc"/>
+                            <stop offset="60%" stop-color="#8b8e92"/>
+                            <stop offset="100%" stop-color="#4a4d50"/>
+                        </radialGradient>
+                        <radialGradient id="dino-body" cx="40%" cy="25%" r="75%">
+                            <stop offset="0%" stop-color="#b8d684"/>
+                            <stop offset="55%" stop-color="#7a9c4a"/>
+                            <stop offset="100%" stop-color="#4a6a26"/>
+                        </radialGradient>
+                        <radialGradient id="dino-armor" cx="40%" cy="25%" r="70%">
+                            <stop offset="0%" stop-color="#6d8d3f"/>
+                            <stop offset="55%" stop-color="#3d5224"/>
+                            <stop offset="100%" stop-color="#1f2c10"/>
+                        </radialGradient>
+                    </defs>
+
+                    <g id="layer-ground"></g>
+                    <g id="layer-river"></g>
+                    <g id="layer-cave"></g>
+                    <g id="layer-objects"></g>
+                    <g id="layer-dino"></g>
+                    <g id="layer-particles"></g>
+                    <g id="layer-hint"></g>
+                </svg>
+            </div>
+
+            <div class="controls">
+                <div class="dpad">
+                    <button class="dpad-btn dpad-up" data-dir="up" aria-label="Вверх">↑</button>
+                    <button class="dpad-btn dpad-left" data-dir="left" aria-label="Влево">←</button>
+                    <button class="dpad-btn dpad-down" data-dir="down" aria-label="Вниз">↓</button>
+                    <button class="dpad-btn dpad-right" data-dir="right" aria-label="Вправо">→</button>
+                </div>
+                <p class="hint">или используй стрелки на клавиатуре</p>
+            </div>
+        </section>
+
+        <!-- Модалка с задачкой -->
+        <div id="modal-question" class="modal">
+            <div class="modal-card">
+                <div class="chest-emoji">🎁</div>
+                <h2>Сундук открылся!</h2>
+                <p class="question" id="question-text">2 + 3 = ?</p>
+                <div id="answer-options" class="answer-options"></div>
+            </div>
+        </div>
+
+        <!-- Модалка с обратной связью -->
+        <div id="modal-feedback" class="modal">
+            <div class="modal-card">
+                <div id="feedback-emoji" class="feedback-emoji">🎉</div>
+                <p id="feedback-text" class="feedback-text"></p>
+                <button id="btn-next" class="big-button primary">Дальше</button>
+            </div>
+        </div>
+
+        <!-- Экран завершения уровня -->
+        <section id="screen-end" class="screen">
+            <div class="card">
+                <div id="end-stars" class="stars"></div>
+                <h2 id="end-title">Отлично!</h2>
+                <p id="end-message"></p>
+                <div class="end-stats">
+                    <div class="stat">
+                        <span class="stat-icon">✅</span>
+                        <span>Правильных ответов: <strong id="end-correct">0</strong> из 10</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-icon">🍎</span>
+                        <span>Собрано фруктов: <strong id="end-fruits">0</strong></span>
+                    </div>
+                </div>
+                <div class="end-buttons">
+                    <button id="btn-play-again" class="big-button primary">Играть снова</button>
+                    <button id="btn-restart" class="big-button secondary">Начать заново</button>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

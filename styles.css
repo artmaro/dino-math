@@ -1,0 +1,430 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    font-family: 'Comic Sans MS', 'Trebuchet MS', system-ui, sans-serif;
+    background: linear-gradient(180deg, #aee9ff 0%, #d6f5ff 50%, #ffe9b3 100%);
+    color: #2b2b2b;
+    overflow: hidden;
+    user-select: none;
+}
+
+#game {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* ==== Экраны ==== */
+.screen {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.screen.active {
+    display: flex;
+}
+
+/* ==== Карточки ==== */
+.card {
+    background: #fff;
+    border-radius: 32px;
+    padding: 40px 36px;
+    max-width: 560px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    border: 4px solid #ffd166;
+}
+
+.title-ankylo {
+    width: 180px;
+    height: 80px;
+    display: block;
+    margin: 0 auto 8px;
+    animation: bounce 1.6s infinite ease-in-out;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+}
+
+h1 {
+    font-size: 32px;
+    color: #2a9d8f;
+    margin-bottom: 16px;
+}
+
+h2 {
+    font-size: 28px;
+    color: #2a9d8f;
+    margin-bottom: 12px;
+}
+
+.description {
+    font-size: 20px;
+    color: #555;
+    margin-bottom: 28px;
+    line-height: 1.4;
+}
+
+/* ==== Кнопки ==== */
+.big-button {
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: bold;
+    padding: 16px 32px;
+    border: none;
+    border-radius: 24px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    min-height: 60px;
+    min-width: 180px;
+}
+
+.big-button:hover {
+    transform: translateY(-2px);
+}
+
+.big-button:active {
+    transform: translateY(1px);
+}
+
+.big-button.primary {
+    background: #ff8c42;
+    color: #fff;
+    box-shadow: 0 6px 0 #d96a1f;
+}
+
+.big-button.primary:active {
+    box-shadow: 0 2px 0 #d96a1f;
+}
+
+.big-button.secondary {
+    background: #6ec5e9;
+    color: #fff;
+    box-shadow: 0 6px 0 #4a9bbc;
+}
+
+.big-button.secondary:active {
+    box-shadow: 0 2px 0 #4a9bbc;
+}
+
+/* ==== HUD ==== */
+.hud {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    z-index: 5;
+}
+
+.hud-item {
+    background: #fff;
+    padding: 10px 18px;
+    border-radius: 20px;
+    font-size: 18px;
+    font-weight: bold;
+    color: #444;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    border: 3px solid #ffd166;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hud-icon {
+    font-size: 22px;
+}
+
+/* ==== Карта ==== */
+.map-wrap {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 70px;
+    margin-bottom: 8px;
+    padding: 10px;
+}
+
+#world {
+    width: 100%;
+    max-width: 1100px;
+    height: 100%;
+    max-height: 540px;
+    filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
+}
+
+.iso-chest .chest-open { display: none; }
+.iso-chest.opened .chest-closed { display: none; }
+.iso-chest.opened .chest-open { display: inline; }
+.iso-chest.opened { opacity: 0.7; }
+
+.cave-glow {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.cave.ready .cave-glow {
+    animation: caveGlow 1.6s infinite ease-in-out;
+}
+
+@keyframes caveGlow {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.2); }
+}
+
+/* ==== D-pad ==== */
+.dpad {
+    display: grid;
+    grid-template-columns: 60px 60px 60px;
+    grid-template-rows: 60px 60px 60px;
+    gap: 6px;
+    margin: 0 auto;
+    touch-action: none;
+}
+
+.dpad-btn {
+    font-family: inherit;
+    font-size: 30px;
+    font-weight: bold;
+    background: #ff8c42;
+    color: #fff;
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #d96a1f;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dpad-btn:active,
+.dpad-btn.pressed {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #d96a1f;
+}
+
+.dpad-up    { grid-column: 2; grid-row: 1; }
+.dpad-left  { grid-column: 1; grid-row: 2; }
+.dpad-down  { grid-column: 2; grid-row: 3; }
+.dpad-right { grid-column: 3; grid-row: 2; }
+
+/* ==== Controls ==== */
+.controls {
+    text-align: center;
+    padding: 20px;
+}
+
+.hint {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+}
+
+/* ==== Модальные окна ==== */
+.modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    padding: 20px;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-card {
+    background: #fff;
+    border-radius: 32px;
+    padding: 36px 32px;
+    max-width: 520px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    border: 4px solid #ffd166;
+    animation: pop-in 0.3s ease-out;
+}
+
+@keyframes pop-in {
+    0% { transform: scale(0.7); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.chest-emoji {
+    font-size: 72px;
+    margin-bottom: 8px;
+}
+
+.question {
+    font-size: 48px;
+    font-weight: bold;
+    color: #264653;
+    margin: 20px 0 28px;
+    letter-spacing: 4px;
+}
+
+.answer-options {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding-top: 14px;
+}
+
+.answer-btn {
+    position: relative;
+    font-family: inherit;
+    font-size: 36px;
+    font-weight: bold;
+    width: 90px;
+    height: 90px;
+    border: none;
+    border-radius: 24px;
+    background: #6ec5e9;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 6px 0 #4a9bbc;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.answer-btn::before {
+    content: attr(data-key);
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff;
+    border: 3px solid #ffd166;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 16px;
+    color: #ff8c42;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 0 #d6a833;
+}
+
+.answer-btn:hover {
+    transform: translateY(-2px);
+}
+
+.answer-btn:active,
+.answer-btn.selected {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #4a9bbc;
+}
+
+.answer-btn.correct {
+    background: #2a9d8f;
+    box-shadow: 0 6px 0 #1f7a70;
+}
+
+.answer-btn.wrong {
+    background: #e76f51;
+    box-shadow: 0 6px 0 #b94f37;
+}
+
+.answer-btn:disabled {
+    cursor: default;
+}
+
+.feedback-emoji {
+    font-size: 80px;
+    margin-bottom: 12px;
+    animation: pop-in 0.4s ease-out;
+}
+
+.feedback-text {
+    font-size: 22px;
+    color: #333;
+    margin-bottom: 24px;
+    line-height: 1.4;
+}
+
+/* ==== Финальный экран ==== */
+.stars {
+    font-size: 64px;
+    margin-bottom: 16px;
+    letter-spacing: 4px;
+}
+
+.star-on {
+    display: inline-block;
+    animation: pop-in 0.5s ease-out backwards;
+}
+
+.star-on:nth-child(1) { animation-delay: 0.1s; }
+.star-on:nth-child(2) { animation-delay: 0.4s; }
+.star-on:nth-child(3) { animation-delay: 0.7s; }
+
+.star-off {
+    opacity: 0.25;
+}
+
+.end-stats {
+    margin: 20px 0 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 20px;
+}
+
+.stat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.stat-icon {
+    font-size: 24px;
+}
+
+.end-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+#end-message {
+    font-size: 20px;
+    color: #555;
+    line-height: 1.4;
+}
+
+/* ==== Адаптив ==== */
+@media (max-width: 600px) {
+    h1 { font-size: 24px; }
+    .description { font-size: 16px; }
+    .question { font-size: 36px; }
+    .answer-btn { width: 72px; height: 72px; font-size: 28px; }
+    .title-emoji { font-size: 72px; }
+    .hud-item { font-size: 14px; padding: 8px 12px; }
+}
