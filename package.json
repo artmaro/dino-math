@@ -1,0 +1,16 @@
+{
+  "name": "dino-math",
+  "version": "0.2.0",
+  "description": "Math game for kids with an ankylosaurus",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "vitest": "^2.1.4",
+    "happy-dom": "^15.7.4"
+  }
+}
