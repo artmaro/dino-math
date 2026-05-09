@@ -120,6 +120,71 @@ h2 {
     box-shadow: 0 2px 0 #4a9bbc;
 }
 
+/* ==== Меню уровней ==== */
+.levels-card {
+    max-width: 720px;
+}
+
+.levels-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin: 24px 0;
+}
+
+.level-card {
+    background: linear-gradient(180deg, #fff 0%, #fff7d4 100%);
+    border: 4px solid #ffd166;
+    border-radius: 22px;
+    padding: 16px 12px;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+    transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+    box-shadow: 0 4px 0 #d6a833;
+}
+
+.level-card:hover {
+    transform: translateY(-3px);
+    border-color: #ff8c42;
+    box-shadow: 0 7px 0 #d6a833;
+}
+
+.level-card:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 0 #d6a833;
+}
+
+.level-card-icon {
+    font-size: 38px;
+    line-height: 1;
+}
+
+.level-card-num {
+    font-size: 20px;
+    font-weight: bold;
+    color: #2a9d8f;
+    margin-top: 4px;
+}
+
+.level-card-desc {
+    font-size: 14px;
+    color: #555;
+    margin: 4px 0;
+}
+
+.level-card-example {
+    font-size: 18px;
+    color: #ff8c42;
+    font-weight: bold;
+    margin-top: 4px;
+    letter-spacing: 1px;
+}
+
+@media (max-width: 600px) {
+    .levels-grid { grid-template-columns: 1fr; }
+}
+
 /* ==== HUD ==== */
 .hud {
     position: absolute;

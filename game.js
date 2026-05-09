@@ -49,18 +49,119 @@ const OBSTACLES = [
 
 const TOTAL_CHESTS = 10;
 
-const QUESTIONS = [
-    { question: "2 + 3 = ?", correctAnswer: 5, options: [4, 5, 6] },
-    { question: "5 + 2 = ?", correctAnswer: 7, options: [6, 7, 9] },
-    { question: "7 - 4 = ?", correctAnswer: 3, options: [2, 3, 5] },
-    { question: "9 - 3 = ?", correctAnswer: 6, options: [5, 6, 8] },
-    { question: "4 + 4 = ?", correctAnswer: 8, options: [7, 8, 9] },
-    { question: "6 + 1 = ?", correctAnswer: 7, options: [5, 7, 8] },
-    { question: "8 - 5 = ?", correctAnswer: 3, options: [3, 4, 6] },
-    { question: "3 + 5 = ?", correctAnswer: 8, options: [6, 8, 9] },
-    { question: "10 - 6 = ?", correctAnswer: 4, options: [2, 4, 5] },
-    { question: "1 + 6 = ?", correctAnswer: 7, options: [7, 8, 9] }
+// ===== Уровни и генераторы задач =====
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function makeOptions(correct, range = 3) {
+    const set = new Set([correct]);
+    let attempts = 0;
+    while (set.size < 3 && attempts < 60) {
+        attempts++;
+        const delta = rand(1, range) * (Math.random() < 0.5 ? -1 : 1);
+        const wrong = correct + delta;
+        if (wrong >= 0 && wrong !== correct) set.add(wrong);
+    }
+    if (set.size < 3) {
+        for (let d = 1; set.size < 3; d++) {
+            if (correct - d >= 0) set.add(correct - d);
+            if (set.size < 3) set.add(correct + d);
+        }
+    }
+    return Array.from(set).slice(0, 3);
+}
+
+function genLevel1() {
+    // Сложение и вычитание, однозначные числа
+    const qs = [];
+    for (let i = 0; i < TOTAL_CHESTS; i++) {
+        if (Math.random() < 0.5) {
+            const a = rand(1, 8);
+            const b = rand(1, 9 - a);
+            const ans = a + b;
+            qs.push({ question: `${a} + ${b} = ?`, correctAnswer: ans, options: makeOptions(ans, 3) });
+        } else {
+            const a = rand(2, 9);
+            const b = rand(1, a - 1);
+            const ans = a - b;
+            qs.push({ question: `${a} - ${b} = ?`, correctAnswer: ans, options: makeOptions(ans, 3) });
+        }
+    }
+    return qs;
+}
+
+function genLevel2() {
+    // Только вычитание, однозначные
+    const qs = [];
+    for (let i = 0; i < TOTAL_CHESTS; i++) {
+        const a = rand(2, 9);
+        const b = rand(1, a - 1);
+        const ans = a - b;
+        qs.push({ question: `${a} - ${b} = ?`, correctAnswer: ans, options: makeOptions(ans, 3) });
+    }
+    return qs;
+}
+
+function genLevel3() {
+    // Сложение двузначных, сумма ≤ 99
+    const qs = [];
+    for (let i = 0; i < TOTAL_CHESTS; i++) {
+        const a = rand(10, 50);
+        const b = rand(10, 99 - a);
+        const ans = a + b;
+        qs.push({ question: `${a} + ${b} = ?`, correctAnswer: ans, options: makeOptions(ans, 8) });
+    }
+    return qs;
+}
+
+function genLevel4() {
+    // Вычитание двузначных
+    const qs = [];
+    for (let i = 0; i < TOTAL_CHESTS; i++) {
+        const a = rand(20, 99);
+        const b = rand(10, a - 1);
+        const ans = a - b;
+        qs.push({ question: `${a} - ${b} = ?`, correctAnswer: ans, options: makeOptions(ans, 8) });
+    }
+    return qs;
+}
+
+function genLevel5() {
+    // Умножение на 2 или 3
+    const qs = [];
+    for (let i = 0; i < TOTAL_CHESTS; i++) {
+        const a = rand(2, 9);
+        const b = Math.random() < 0.5 ? 2 : 3;
+        const ans = a * b;
+        qs.push({ question: `${a} × ${b} = ?`, correctAnswer: ans, options: makeOptions(ans, 4) });
+    }
+    return qs;
+}
+
+function genLevel6() {
+    // Простые уравнения вида x + a = b, a + x = b, x - a = b
+    const qs = [];
+    const variants = [
+        () => { const a = rand(1, 5); const x = rand(1, 9 - a); return { q: `x + ${a} = ${a + x}`, x }; },
+        () => { const a = rand(1, 5); const x = rand(1, 9 - a); return { q: `${a} + x = ${a + x}`, x }; },
+        () => { const a = rand(1, 4); const x = rand(a + 1, 9); return { q: `x - ${a} = ${x - a}`, x }; }
+    ];
+    for (let i = 0; i < TOTAL_CHESTS; i++) {
+        const v = variants[Math.floor(Math.random() * variants.length)]();
+        qs.push({ question: v.q, correctAnswer: v.x, options: makeOptions(v.x, 3) });
+    }
+    return qs;
+}
+
+const LEVELS = [
+    { id: 1, title: 'Уровень 1', subtitle: 'Сложение и вычитание', icon: '🌱', example: '5 + 3 = ?', generate: genLevel1 },
+    { id: 2, title: 'Уровень 2', subtitle: 'Только вычитание',     icon: '🍃', example: '8 - 5 = ?', generate: genLevel2 },
+    { id: 3, title: 'Уровень 3', subtitle: 'Сложение двузначных',  icon: '🌿', example: '24 + 35 = ?', generate: genLevel3 },
+    { id: 4, title: 'Уровень 4', subtitle: 'Вычитание двузначных', icon: '🌳', example: '78 - 25 = ?', generate: genLevel4 },
+    { id: 5, title: 'Уровень 5', subtitle: 'Умножение',            icon: '⭐', example: '4 × 3 = ?', generate: genLevel5 },
+    { id: 6, title: 'Уровень 6', subtitle: 'Уравнения',            icon: '🧠', example: 'x + 2 = 4', generate: genLevel6 }
 ];
+
+let currentLevel = 1;
 
 // ===== Утилиты =====
 function shuffle(array) {
@@ -255,49 +356,6 @@ function ankyloBody() {
         </g>`;
 }
 
-function pineBody() {
-    return `<g>
-        <ellipse cx="2" cy="4" rx="22" ry="6" fill="rgba(0,0,0,0.32)"/>
-        <rect x="-5" y="-18" width="10" height="22" rx="2" fill="url(#bark-grad)"/>
-        <polygon points="-26,-14 0,-50 26,-14" fill="url(#leaves-grad)"/>
-        <polygon points="-22,-30 0,-62 22,-30" fill="url(#leaves-grad)"/>
-        <polygon points="-18,-46 0,-72 18,-46" fill="url(#leaves-grad2)"/>
-        <polygon points="-22,-14 -8,-46 0,-50" fill="#a8e07a" opacity="0.35"/>
-        <polygon points="-19,-30 -6,-58 0,-62" fill="#a8e07a" opacity="0.4"/>
-        <circle cx="-10" cy="-22" r="2" fill="#e85d3a"/>
-        <circle cx="9" cy="-38" r="2" fill="#e85d3a"/>
-        <circle cx="4" cy="-58" r="1.6" fill="#ffd166"/>
-    </g>`;
-}
-
-function oakBody() {
-    return `<g>
-        <ellipse cx="3" cy="5" rx="26" ry="7" fill="rgba(0,0,0,0.32)"/>
-        <path d="M -7 4 Q -11 -10 -5 -22 L 5 -22 Q 11 -10 7 4 Z" fill="url(#bark-grad)"/>
-        <ellipse cx="-12" cy="-30" rx="16" ry="14" fill="url(#leaves-grad)"/>
-        <ellipse cx="14" cy="-32" rx="17" ry="15" fill="url(#leaves-grad)"/>
-        <ellipse cx="0" cy="-44" rx="22" ry="18" fill="url(#leaves-grad2)"/>
-        <ellipse cx="-8" cy="-52" rx="12" ry="9" fill="url(#leaves-grad2)"/>
-        <ellipse cx="-15" cy="-36" rx="6" ry="4" fill="#a8e07a" opacity="0.45"/>
-        <ellipse cx="-3" cy="-50" rx="6" ry="4" fill="#bff09c" opacity="0.5"/>
-        <circle cx="-16" cy="-26" r="2.4" fill="#e85d3a"/>
-        <circle cx="18" cy="-30" r="2.4" fill="#e85d3a"/>
-        <circle cx="6" cy="-46" r="2.4" fill="#e85d3a"/>
-    </g>`;
-}
-
-function bushBody() {
-    return `<g>
-        <ellipse cx="0" cy="3" rx="18" ry="5" fill="rgba(0,0,0,0.3)"/>
-        <ellipse cx="-10" cy="-6" rx="11" ry="9" fill="url(#leaves-grad)"/>
-        <ellipse cx="10" cy="-6" rx="11" ry="9" fill="url(#leaves-grad)"/>
-        <ellipse cx="0" cy="-13" rx="12" ry="10" fill="url(#leaves-grad2)"/>
-        <ellipse cx="-12" cy="-10" rx="4" ry="2.5" fill="#a8e07a" opacity="0.55"/>
-        <circle cx="-5" cy="-9" r="1.8" fill="#ffd166"/>
-        <circle cx="6" cy="-11" r="1.8" fill="#ff8888"/>
-    </g>`;
-}
-
 function rockSmallBody() {
     return `<g>
         <ellipse cx="0" cy="3" rx="14" ry="4" fill="rgba(0,0,0,0.3)"/>
@@ -373,31 +431,6 @@ function bridgeBody() {
     </g>`;
 }
 
-function chestClosedBody() {
-    return `<g>
-        <ellipse cx="0" cy="3" rx="22" ry="5" fill="rgba(0,0,0,0.35)"/>
-        <rect x="-20" y="-15" width="40" height="18" rx="3" fill="#a87332" stroke="#5b3614" stroke-width="1.5"/>
-        <rect x="-20" y="-7" width="40" height="3" fill="#5b3614"/>
-        <path d="M-20 -15 Q-20 -28 0 -28 Q20 -28 20 -15 Z" fill="#c98842" stroke="#5b3614" stroke-width="1.5"/>
-        <path d="M-18 -15 Q-18 -25 0 -25" stroke="#deaa68" stroke-width="1.5" fill="none" opacity="0.7"/>
-        <rect x="-4" y="-12" width="8" height="9" fill="#ffd166" stroke="#a07020" stroke-width="0.7"/>
-        <circle cx="0" cy="-9" r="1.4" fill="#5b3614"/>
-        <rect x="-21" y="-15" width="2" height="18" fill="#5b3614"/>
-        <rect x="19" y="-15" width="2" height="18" fill="#5b3614"/>
-    </g>`;
-}
-
-function chestOpenBody() {
-    return `<g>
-        <ellipse cx="0" cy="3" rx="22" ry="5" fill="rgba(0,0,0,0.35)"/>
-        <rect x="-20" y="-15" width="40" height="18" rx="3" fill="#a87332" stroke="#5b3614" stroke-width="1.5" opacity="0.7"/>
-        <rect x="-18" y="-15" width="36" height="4" fill="#3d2410"/>
-        <path d="M-20 -15 Q-20 -34 0 -38 Q20 -34 20 -20 L20 -15 Z" fill="#c98842" stroke="#5b3614" stroke-width="1.5" opacity="0.7"/>
-        <text x="-9" y="-19" font-size="10" text-anchor="middle">✨</text>
-        <text x="7" y="-26" font-size="10" text-anchor="middle">✨</text>
-    </g>`;
-}
-
 function caveBody() {
     // Большая гора, полностью покрывающая вход в пещеру.
     return `<g>
@@ -451,21 +484,32 @@ function particleBody() {
 }
 
 // Описание спрайтов: viewBox + якорь (точка в SVG-координатах, которая попадёт в позицию x,y объекта)
+// SVG-спрайты (для тех, на кого нет PNG-ассета)
 const SPRITES = {
-    ankylo:        { viewBox: '-100 -42 175 70',  anchor: { x: 0,  y: 18 }, body: ankyloBody },
-    pine:          { viewBox: '-30 -76 60 86',    anchor: { x: 2,  y: 4  }, body: pineBody },
-    oak:           { viewBox: '-32 -64 70 76',    anchor: { x: 3,  y: 5  }, body: oakBody },
-    bush:          { viewBox: '-22 -26 44 34',    anchor: { x: 0,  y: 3  }, body: bushBody },
     rockSmall:     { viewBox: '-16 -18 32 24',    anchor: { x: 0,  y: 3  }, body: rockSmallBody },
     flower:        { viewBox: '-6 -19 12 23',     anchor: { x: 0,  y: 2  }, body: flowerBody },
     boulder:       { viewBox: '-50 -44 100 60',   anchor: { x: 2,  y: 10 }, body: boulderBody },
     log:           { viewBox: '-70 -28 140 56',   anchor: { x: 2,  y: 14 }, body: logBody },
     bridge:        { viewBox: '-65 -42 130 84',   anchor: { x: 2,  y: 36 }, body: bridgeBody },
-    'chest-closed':{ viewBox: '-24 -32 48 40',    anchor: { x: 0,  y: 3  }, body: chestClosedBody },
-    'chest-open':  { viewBox: '-24 -42 48 50',    anchor: { x: 0,  y: 3  }, body: chestOpenBody },
     cave:          { viewBox: '-125 -130 250 210', anchor: { x: 0,  y: 73 }, body: caveBody },
     particle:      { viewBox: '-8 -8 16 16',      anchor: { x: 0,  y: 0  }, body: particleBody }
 };
+
+// PNG-ассеты с magenta-chroma-key, который снимается на лету.
+// crop=true — обрезаем по содержимому; spritesheet — нарезаем на кадры.
+const IMAGE_ASSETS = [
+    { key: 'img-tree-broadleaf', url: 'assets/02_tree_broadleaf.png', maxDim: 360, crop: true, displayH: 110 },
+    { key: 'img-tree-evergreen', url: 'assets/03_tree_evergreen.png', maxDim: 360, crop: true, displayH: 110 },
+    { key: 'img-tree-magic',     url: 'assets/04_tree_magic.png',     maxDim: 360, crop: true, displayH: 115 },
+    { key: 'img-bush-leafy',     url: 'assets/05_bush_leafy.png',     maxDim: 280, crop: true, displayH: 55 },
+    { key: 'img-bush-berries',   url: 'assets/06_bush_berries.png',   maxDim: 280, crop: true, displayH: 55 },
+    { key: 'img-bush-flowers',   url: 'assets/07_bush_flowers.png',   maxDim: 280, crop: true, displayH: 55 },
+    { key: 'img-chest-closed',     url: 'assets/08_chest_closed.png',     maxDim: 256, crop: true, displayH: 60 },
+    { key: 'img-chest-open-full',  url: 'assets/09_chest_open_full.png',  maxDim: 256, crop: true, displayH: 60 },
+    { key: 'img-chest-open-empty', url: 'assets/10_chest_open_empty.png', maxDim: 256, crop: true, displayH: 60 },
+    { key: 'img-ankylo', url: 'assets/01_ankylosaurus_sprite_sheet_6x4.png',
+      scaleFactor: 0.5, spritesheet: { cols: 6, rows: 4 }, displayH: 110 }
+];
 
 function makeSpriteSVG(key) {
     const s = SPRITES[key];
@@ -483,6 +527,61 @@ function spriteSize(key) {
     const s = SPRITES[key];
     const [, , vw, vh] = s.viewBox.split(' ').map(Number);
     return { w: vw, h: vh };
+}
+
+// Снимает розовый chroma key (#FF00FF и близкие)
+function removeMagentaInPlace(canvas) {
+    const ctx = canvas.getContext('2d');
+    const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = id.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        if (r > 200 && g < 90 && b > 200) data[i + 3] = 0;
+    }
+    ctx.putImageData(id, 0, 0);
+}
+
+// Обрезает прозрачный фон, возвращает новый canvas
+function cropCanvasToContent(canvas, padding = 2) {
+    const ctx = canvas.getContext('2d');
+    const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = id.data;
+    const w = canvas.width, h = canvas.height;
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            if (data[(y * w + x) * 4 + 3] > 0) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+    if (minX > maxX) return canvas;
+    const cw = maxX - minX + 1 + padding * 2;
+    const ch = maxY - minY + 1 + padding * 2;
+    const out = document.createElement('canvas');
+    out.width = cw; out.height = ch;
+    out.getContext('2d').drawImage(canvas, -minX + padding, -minY + padding);
+    return out;
+}
+
+// Карта целевых высот в игре
+const IMG_DISPLAY_HEIGHTS = Object.fromEntries(IMAGE_ASSETS.map(a => [a.key, a.displayH || 60]));
+
+// Применяет нужный масштаб к спрайту (по высоте, с сохранением пропорций)
+function applyImgScale(scene, sprite, key, frameIdx = null) {
+    const target = IMG_DISPLAY_HEIGHTS[key] || 60;
+    let h;
+    if (frameIdx !== null) {
+        const frame = scene.textures.get(key).get(frameIdx);
+        h = frame ? frame.height : 0;
+    } else {
+        const src = scene.textures.get(key).getSourceImage();
+        h = src ? src.height : 0;
+    }
+    if (h > 0) sprite.setScale(target / h);
 }
 
 // ===== Web Audio =====
@@ -534,17 +633,15 @@ function playWin() {
 // ===== HTML UI =====
 const screens = {
     start: document.getElementById('screen-start'),
+    levels: document.getElementById('screen-levels'),
     play: document.getElementById('screen-play'),
     end: document.getElementById('screen-end')
 };
 const modalQuestion = document.getElementById('modal-question');
-const modalFeedback = document.getElementById('modal-feedback');
 const fruitCountEl = document.getElementById('fruit-count');
 const chestProgressEl = document.getElementById('chest-progress');
 const questionTextEl = document.getElementById('question-text');
 const answerOptionsEl = document.getElementById('answer-options');
-const feedbackEmojiEl = document.getElementById('feedback-emoji');
-const feedbackTextEl = document.getElementById('feedback-text');
 
 function showScreen(name) {
     Object.values(screens).forEach(s => s.classList.remove('active'));
@@ -561,9 +658,8 @@ function renderTitleAnkylo() {
     if (titleSvg) titleSvg.innerHTML = ankyloBody();
 }
 
-// Колбэки от модалок (передаются GameScene-ом)
+// Колбэк модалки задачи
 let questionCallback = null;
-let feedbackCallback = null;
 function showQuestionModal(question, options, onAnswer) {
     questionCallback = onAnswer;
     questionTextEl.textContent = question;
@@ -573,29 +669,16 @@ function showQuestionModal(question, options, onAnswer) {
         btn.className = 'answer-btn';
         btn.textContent = opt;
         btn.setAttribute('data-key', i + 1);
-        btn.addEventListener('click', () => answerSelected(opt, btn, options));
+        btn.addEventListener('click', () => answerSelected(opt, btn));
         answerOptionsEl.appendChild(btn);
     });
     showModal(modalQuestion);
 }
-function answerSelected(selected, btnEl, options) {
+function answerSelected(selected, btnEl) {
     if (!questionCallback) return;
     const cb = questionCallback;
     questionCallback = null;
     cb(selected, btnEl);
-}
-function showFeedbackModal(correctAnswer, onContinue) {
-    feedbackCallback = onContinue;
-    feedbackEmojiEl.textContent = '🌟';
-    feedbackTextEl.textContent = `Почти получилось! Правильный ответ: ${correctAnswer}`;
-    showModal(modalFeedback);
-}
-function continueFeedback() {
-    if (!feedbackCallback) return;
-    const cb = feedbackCallback;
-    feedbackCallback = null;
-    hideModal(modalFeedback);
-    cb();
 }
 function showEndScreen(stars, title, message, correct, fruits) {
     const starsEl = document.getElementById('end-stars');
@@ -610,7 +693,32 @@ function showEndScreen(stars, title, message, correct, fruits) {
     document.getElementById('end-message').textContent = message;
     document.getElementById('end-correct').textContent = correct;
     document.getElementById('end-fruits').textContent = fruits;
+    // Кнопка "Следующий уровень" видна только если есть следующий
+    const nextBtn = document.getElementById('btn-next-level');
+    nextBtn.style.display = currentLevel < LEVELS.length ? '' : 'none';
     showScreen('end');
+}
+
+function renderLevelMenu() {
+    const grid = document.getElementById('levels-grid');
+    grid.innerHTML = '';
+    LEVELS.forEach(level => {
+        const btn = document.createElement('button');
+        btn.className = 'level-card';
+        btn.innerHTML = `
+            <div class="level-card-icon">${level.icon}</div>
+            <div class="level-card-num">${level.title}</div>
+            <div class="level-card-desc">${level.subtitle}</div>
+            <div class="level-card-example">${level.example}</div>
+        `;
+        btn.addEventListener('click', () => {
+            currentLevel = level.id;
+            initAudio();
+            showScreen('play');
+            startPhaserAndGame();
+        });
+        grid.appendChild(btn);
+    });
 }
 
 // D-pad состояние (общее, читается GameScene-ом)
@@ -653,26 +761,20 @@ document.addEventListener('keydown', (e) => {
         }
         return;
     }
-    if (modalFeedback.classList.contains('active') && (e.key === 'Enter' || e.key === ' ')) {
-        e.preventDefault();
-        continueFeedback();
-    }
 });
-
-document.getElementById('btn-next').addEventListener('click', continueFeedback);
 
 // ===== Phaser сцены =====
 class BootScene extends Phaser.Scene {
     constructor() { super('Boot'); }
 
     create() {
-        // Загружаем SVG → Blob → Image → Canvas → Phaser-текстура
-        const promises = Object.keys(SPRITES).map(key => this.loadSVGAsCanvas(key));
-        Promise.all(promises)
+        const svgPromises = Object.keys(SPRITES).map(key => this.loadSVGAsCanvas(key));
+        const pngPromises = IMAGE_ASSETS.map(asset => this.loadPNGAsset(asset));
+        Promise.all([...svgPromises, ...pngPromises])
             .then(() => this.scene.start('Game'))
             .catch(err => {
-                console.error('[BootScene] Sprite load failed:', err);
-                this.showError(err.message || 'Ошибка загрузки спрайтов');
+                console.error('[BootScene] Asset load failed:', err);
+                this.showError(err.message || 'Ошибка загрузки ассетов');
             });
     }
 
@@ -703,6 +805,61 @@ class BootScene extends Phaser.Scene {
                 reject(new Error(`Не удалось загрузить SVG для "${key}"`));
             };
             img.src = url;
+        });
+    }
+
+    loadPNGAsset(asset) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    let canvas;
+                    if (asset.scaleFactor) {
+                        const w = Math.round(img.naturalWidth * asset.scaleFactor);
+                        const h = Math.round(img.naturalHeight * asset.scaleFactor);
+                        canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    } else if (asset.maxDim) {
+                        const ratio = asset.maxDim / Math.max(img.naturalWidth, img.naturalHeight);
+                        const w = Math.round(img.naturalWidth * ratio);
+                        const h = Math.round(img.naturalHeight * ratio);
+                        canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    } else {
+                        canvas = document.createElement('canvas');
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                        canvas.getContext('2d').drawImage(img, 0, 0);
+                    }
+
+                    removeMagentaInPlace(canvas);
+                    if (asset.crop) canvas = cropCanvasToContent(canvas);
+
+                    if (asset.spritesheet) {
+                        const tex = this.textures.addCanvas(asset.key, canvas);
+                        const cols = asset.spritesheet.cols;
+                        const rows = asset.spritesheet.rows;
+                        const fw = Math.floor(canvas.width / cols);
+                        const fh = Math.floor(canvas.height / rows);
+                        let idx = 0;
+                        for (let r = 0; r < rows; r++) {
+                            for (let c = 0; c < cols; c++) {
+                                tex.add(idx, 0, c * fw, r * fh, fw, fh);
+                                idx++;
+                            }
+                        }
+                    } else {
+                        this.textures.addCanvas(asset.key, canvas);
+                    }
+                    resolve();
+                } catch (e) {
+                    reject(e);
+                }
+            };
+            img.onerror = () => reject(new Error(`Не удалось загрузить "${asset.url}"`));
+            img.src = asset.url;
         });
     }
 
@@ -752,24 +909,30 @@ class GameScene extends Phaser.Scene {
             sprite.setDepth(b.y);
         });
 
-        // Лес-граница (плотный ряд деревьев в кольце вокруг ромба)
+        // Лес-граница (плотный ряд PNG-деревьев в кольце вокруг ромба)
         this.borderForest.forEach(t => {
-            const sprite = this.add.image(t.x, t.y, t.type);
-            const o = spriteOrigin(t.type);
-            sprite.setOrigin(o.x, o.y);
+            const sprite = this.add.image(t.x, t.y, t.imgKey);
+            sprite.setOrigin(0.5, 0.95);
+            applyImgScale(this, sprite, t.imgKey);
             sprite.setDepth(t.y);
         });
 
-        // Декорации внутри ромба
+        // Декорации внутри ромба (PNG для деревьев/кустов, SVG для камней/цветов)
         this.decorations.forEach(d => {
-            const key = d.type === 'rockSmall' ? 'rockSmall' : d.type;
-            const sprite = this.add.image(d.x, d.y, key);
-            const o = spriteOrigin(key);
-            sprite.setOrigin(o.x, o.y);
+            let sprite;
+            if (d.imgKey) {
+                sprite = this.add.image(d.x, d.y, d.imgKey);
+                sprite.setOrigin(0.5, 0.95);
+                applyImgScale(this, sprite, d.imgKey);
+            } else {
+                sprite = this.add.image(d.x, d.y, d.type);
+                const o = spriteOrigin(d.type);
+                sprite.setOrigin(o.x, o.y);
+            }
             sprite.setDepth(d.y);
         });
 
-        // Препятствия
+        // Препятствия (камни/брёвна — пока SVG)
         OBSTACLES.forEach(obs => {
             const key = obs.type;
             const sprite = this.add.image(obs.x, obs.y, key);
@@ -779,11 +942,11 @@ class GameScene extends Phaser.Scene {
             sprite.setDepth(obs.y);
         });
 
-        // Сундуки
+        // Сундуки (PNG)
         this.chestSprites = this.chests.map((c, i) => {
-            const sprite = this.add.image(c.x, c.y, 'chest-closed');
-            const o = spriteOrigin('chest-closed');
-            sprite.setOrigin(o.x, o.y);
+            const sprite = this.add.image(c.x, c.y, 'img-chest-closed');
+            sprite.setOrigin(0.5, 0.92);
+            applyImgScale(this, sprite, 'img-chest-closed');
             sprite.setDepth(c.y);
             sprite.setData('idx', i);
             return sprite;
@@ -801,13 +964,22 @@ class GameScene extends Phaser.Scene {
         caveSprite.setOrigin(caveO.x, caveO.y);
         caveSprite.setDepth(WORLD.cave.y);
 
-        // Анкилозавр + логическая позиция (отдельно от спрайта для bob-анимации)
+        // Анкилозавр (PNG спрайт-лист 6×4 с анимациями)
         this.dinoLogicalX = WORLD.start.x;
         this.dinoLogicalY = WORLD.start.y;
-        this.dino = this.add.image(WORLD.start.x, WORLD.start.y, 'ankylo');
-        const dO = spriteOrigin('ankylo');
-        this.dino.setOrigin(dO.x, dO.y);
+        this.dino = this.add.sprite(WORLD.start.x, WORLD.start.y, 'img-ankylo', 0);
+        this.dino.setOrigin(0.5, 0.92);
+        applyImgScale(this, this.dino, 'img-ankylo', 0);
         this.dino.setDepth(WORLD.start.y);
+
+        // Анимации дино из спрайт-листа
+        if (!this.anims.exists('dino-idle')) {
+            this.anims.create({ key: 'dino-idle', frames: this.anims.generateFrameNumbers('img-ankylo', { start: 0, end: 5 }), frameRate: 4, repeat: -1 });
+            this.anims.create({ key: 'dino-walk', frames: this.anims.generateFrameNumbers('img-ankylo', { start: 6, end: 11 }), frameRate: 9, repeat: -1 });
+            this.anims.create({ key: 'dino-happy', frames: this.anims.generateFrameNumbers('img-ankylo', { start: 12, end: 17 }), frameRate: 8, repeat: 0 });
+            this.anims.create({ key: 'dino-sad', frames: this.anims.generateFrameNumbers('img-ankylo', { start: 18, end: 23 }), frameRate: 5, repeat: 0 });
+        }
+        this.dino.play('dino-idle');
 
         // Невидимая цель для камеры — следит за логической позицией без bob-болтанки
         this.followTarget = this.add.rectangle(WORLD.start.x, WORLD.start.y, 1, 1).setAlpha(0);
@@ -961,7 +1133,8 @@ class GameScene extends Phaser.Scene {
 
     generateChests() {
         const chests = [];
-        const questions = shuffle(QUESTIONS);
+        const levelDef = LEVELS.find(l => l.id === currentLevel) || LEVELS[0];
+        const questions = shuffle(levelDef.generate());
         let attempts = 0;
         while (chests.length < TOTAL_CHESTS && attempts < 4000) {
             attempts++;
@@ -988,7 +1161,20 @@ class GameScene extends Phaser.Scene {
 
     generateDecorations(chests) {
         const decor = [];
-        const types = ['pine', 'pine', 'oak', 'oak', 'oak', 'bush', 'bush', 'rockSmall', 'flower', 'flower'];
+        // Большинство — PNG-варианты, изредка SVG (камни и одиночные цветы)
+        const variants = [
+            { imgKey: 'img-tree-evergreen', weight: 3 },
+            { imgKey: 'img-tree-broadleaf', weight: 3 },
+            { imgKey: 'img-tree-magic',     weight: 1 },
+            { imgKey: 'img-bush-leafy',     weight: 2 },
+            { imgKey: 'img-bush-berries',   weight: 2 },
+            { imgKey: 'img-bush-flowers',   weight: 2 },
+            { type: 'rockSmall',            weight: 1 },
+            { type: 'flower',               weight: 1 }
+        ];
+        const pool = [];
+        variants.forEach(v => { for (let i = 0; i < v.weight; i++) pool.push(v); });
+
         let attempts = 0;
         while (decor.length < 42 && attempts < 2000) {
             attempts++;
@@ -1001,16 +1187,21 @@ class GameScene extends Phaser.Scene {
             if (decor.some(d => dist(x, y, d.x, d.y) < 80)) continue;
             if (distToRiver(x, y) < RIVER_HALF_WIDTH + 8) continue;
             if (OBSTACLES.some(o => dist(x, y, o.x, o.y) < o.r + 25)) continue;
-            decor.push({ x, y, type: types[Math.floor(Math.random() * types.length)] });
+            const v = pool[Math.floor(Math.random() * pool.length)];
+            decor.push({ x, y, ...v });
         }
         return decor;
     }
 
     generateBorderForest() {
-        // Деревья в кольце ВОКРУГ ромба — формируют естественный край мира.
         const trees = [];
         const d = WORLD.diamond;
-        const types = ['pine', 'pine', 'pine', 'oak', 'oak', 'bush'];
+        const variants = [
+            'img-tree-evergreen', 'img-tree-evergreen', 'img-tree-evergreen',
+            'img-tree-broadleaf', 'img-tree-broadleaf',
+            'img-tree-magic',
+            'img-bush-leafy'
+        ];
         let attempts = 0;
         const target = 110;
         while (trees.length < target && attempts < 8000) {
@@ -1020,12 +1211,12 @@ class GameScene extends Phaser.Scene {
             if (x < 60 || x > WORLD.w - 60) continue;
             if (y < 80 || y > WORLD.h - 60) continue;
             const ratio = Math.abs(x - d.cx) / d.hw + Math.abs(y - d.cy) / d.hh;
-            if (ratio < 1.02) continue;   // внутри игровой зоны — пропускаем
-            if (ratio > 1.45) continue;   // слишком далеко — за пределами мира
+            if (ratio < 1.02) continue;
+            if (ratio > 1.45) continue;
             if (trees.some(t => dist(x, y, t.x, t.y) < 55)) continue;
-            // Не лезть в район пещеры (она и так за ромбом сверху)
             if (dist(x, y, WORLD.cave.x, WORLD.cave.y) < 130) continue;
-            trees.push({ x, y, type: types[Math.floor(Math.random() * types.length)] });
+            const imgKey = variants[Math.floor(Math.random() * variants.length)];
+            trees.push({ x, y, imgKey });
         }
         return trees;
     }
@@ -1076,17 +1267,22 @@ class GameScene extends Phaser.Scene {
     }
 
     applyDinoBob(time) {
-        // Анимация ходьбы: вертикальный bob + лёгкий наклон
+        // Переключение анимаций idle/walk (но не перебиваем happy/sad если они играют)
+        const cur = this.dino.anims.currentAnim?.key;
+        const isOneShot = cur === 'dino-happy' || cur === 'dino-sad';
+        const isPlaying = this.dino.anims.isPlaying;
+        if (!isOneShot || !isPlaying) {
+            const target = this.walking ? 'dino-walk' : 'dino-idle';
+            if (cur !== target) this.dino.play(target);
+        }
+        // Лёгкий bob в дополнение к покадровой анимации
         if (this.walking) {
-            const bob = Math.sin(time / 90) * 3;
-            const tilt = Math.sin(time / 90) * 0.04;
+            const bob = Math.sin(time / 90) * 2;
             this.dino.x = this.dinoLogicalX;
             this.dino.y = this.dinoLogicalY + bob;
-            this.dino.setRotation(tilt);
         } else {
             this.dino.x = this.dinoLogicalX;
             this.dino.y = this.dinoLogicalY;
-            this.dino.setRotation(0);
         }
         this.dino.setDepth(this.dinoLogicalY);
     }
@@ -1121,10 +1317,11 @@ class GameScene extends Phaser.Scene {
             });
 
             c.opened = true;
-            this.chestSprites[idx].setTexture('chest-open');
-            const o = spriteOrigin('chest-open');
-            this.chestSprites[idx].setOrigin(o.x, o.y);
-            this.chestSprites[idx].setAlpha(0.85);
+            // На правильный ответ сундук с золотом, на неверный — пустой
+            const openKey = isCorrect ? 'img-chest-open-full' : 'img-chest-open-empty';
+            this.chestSprites[idx].setTexture(openKey);
+            this.chestSprites[idx].setOrigin(0.5, 0.92);
+            applyImgScale(this, this.chestSprites[idx], openKey);
 
             // Подсветить пещеру если все собраны
             this.updateCaveGlow();
@@ -1133,6 +1330,7 @@ class GameScene extends Phaser.Scene {
                 this.fruits += 1;
                 this.correctAnswers += 1;
                 playSuccess();
+                this.dino.play('dino-happy', true);
                 this.time.delayedCall(350, () => {
                     hideModal(modalQuestion);
                     this.spawnFireworks(this.dino.x, this.dino.y);
@@ -1142,13 +1340,12 @@ class GameScene extends Phaser.Scene {
                 });
             } else {
                 playWrong();
-                this.time.delayedCall(700, () => {
+                this.dino.play('dino-sad', true);
+                this.time.delayedCall(900, () => {
                     hideModal(modalQuestion);
-                    showFeedbackModal(c.correctAnswer, () => {
-                        updateHUD(this.fruits, this.chests.filter(ch => ch.opened).length);
-                        this.nudgeDinoAwayFromChest(c);
-                        this.paused = false;
-                    });
+                    updateHUD(this.fruits, this.chests.filter(ch => ch.opened).length);
+                    this.nudgeDinoAwayFromChest(c);
+                    this.paused = false;
                 });
             }
         });
@@ -1236,18 +1433,24 @@ function startPhaserAndGame() {
 // ===== UI bindings =====
 bindDpad();
 renderTitleAnkylo();
+renderLevelMenu();
 showScreen('start');
 
 document.getElementById('btn-start').addEventListener('click', () => {
-    initAudio();
-    showScreen('play');
-    startPhaserAndGame();
+    showScreen('levels');
+});
+document.getElementById('btn-levels-back').addEventListener('click', () => {
+    showScreen('start');
 });
 document.getElementById('btn-play-again').addEventListener('click', () => {
     showScreen('play');
     startPhaserAndGame();
 });
-document.getElementById('btn-restart').addEventListener('click', () => {
+document.getElementById('btn-next-level').addEventListener('click', () => {
+    if (currentLevel < LEVELS.length) currentLevel++;
     showScreen('play');
     startPhaserAndGame();
+});
+document.getElementById('btn-back-menu').addEventListener('click', () => {
+    showScreen('levels');
 });

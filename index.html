@@ -38,6 +38,15 @@
             </div>
         </section>
 
+        <!-- Меню выбора уровня -->
+        <section id="screen-levels" class="screen">
+            <div class="card levels-card">
+                <h1>Выбери уровень</h1>
+                <div id="levels-grid" class="levels-grid"></div>
+                <button id="btn-levels-back" class="big-button secondary">← Назад</button>
+            </div>
+        </section>
+
         <!-- Игровой экран (Phaser монтирует canvas внутрь #world) -->
         <section id="screen-play" class="screen">
             <header class="hud">
@@ -76,15 +85,6 @@
             </div>
         </div>
 
-        <!-- Модалка с обратной связью -->
-        <div id="modal-feedback" class="modal">
-            <div class="modal-card">
-                <div id="feedback-emoji" class="feedback-emoji">🎉</div>
-                <p id="feedback-text" class="feedback-text"></p>
-                <button id="btn-next" class="big-button primary">Дальше</button>
-            </div>
-        </div>
-
         <!-- Экран завершения уровня -->
         <section id="screen-end" class="screen">
             <div class="card">
@@ -102,8 +102,9 @@
                     </div>
                 </div>
                 <div class="end-buttons">
-                    <button id="btn-play-again" class="big-button primary">Играть снова</button>
-                    <button id="btn-restart" class="big-button secondary">Начать заново</button>
+                    <button id="btn-next-level" class="big-button primary">Следующий уровень →</button>
+                    <button id="btn-play-again" class="big-button primary">Играть ещё раз</button>
+                    <button id="btn-back-menu" class="big-button secondary">В меню</button>
                 </div>
             </div>
         </section>

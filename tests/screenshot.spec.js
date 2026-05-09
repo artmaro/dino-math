@@ -1,9 +1,10 @@
 import { test } from '@playwright/test';
 
-async function bootGame(page) {
+async function bootGame(page, levelIdx = 0) {
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto('/');
     await page.click('#btn-start');
+    await page.locator('.level-card').nth(levelIdx).click();
     await page.waitForFunction(() => {
         const g = window.__game;
         if (!g) return false;
@@ -16,6 +17,14 @@ async function bootGame(page) {
 test('capture gameplay screenshot', async ({ page }) => {
     await bootGame(page);
     await page.screenshot({ path: 'test-results/current-look.png', fullPage: false });
+});
+
+test('capture levels menu screenshot', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto('/');
+    await page.click('#btn-start');
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: 'test-results/levels-menu.png', fullPage: false });
 });
 
 test('capture cave area screenshot', async ({ page }) => {

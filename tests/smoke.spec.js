@@ -26,7 +26,7 @@ test.describe('Dino Math game — smoke', () => {
     test('start screen loads without errors', async ({ page }) => {
         await page.goto('/');
         await expect(page.locator('#screen-start')).toHaveClass(/active/);
-        await expect(page.locator('h1')).toContainText('Анкилозавр');
+        await expect(page.locator('#screen-start h1')).toContainText('Анкилозавр');
         await expect(page.locator('#btn-start')).toBeVisible();
         await page.waitForTimeout(400);
         expect(pageErrors).toEqual([]);
@@ -35,6 +35,7 @@ test.describe('Dino Math game — smoke', () => {
     test('clicking start mounts a Phaser canvas', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await expect(page.locator('#screen-play')).toHaveClass(/active/);
 
         const canvas = page.locator('#world canvas');
@@ -47,6 +48,7 @@ test.describe('Dino Math game — smoke', () => {
     test('GameScene generates world: dino, 10 chests, decorations', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await waitForGameSceneReady(page);
 
         const summary = await page.evaluate(() => {
@@ -74,15 +76,23 @@ test.describe('Dino Math game — smoke', () => {
         expect(consoleErrors, `console error: ${consoleErrors.join(' | ')}`).toEqual([]);
     });
 
-    test('all 12 SVG textures are loaded', async ({ page }) => {
+    test('all required textures are loaded (SVG + PNG)', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await waitForGameSceneReady(page);
 
         const textures = await page.evaluate(() => {
             const game = window.__game;
-            const expected = ['ankylo', 'pine', 'oak', 'bush', 'rockSmall', 'flower',
-                              'boulder', 'log', 'bridge', 'chest-closed', 'chest-open', 'cave', 'particle'];
+            const expected = [
+                // SVG-спрайты
+                'rockSmall', 'flower', 'boulder', 'log', 'bridge', 'cave', 'particle',
+                // PNG-ассеты
+                'img-tree-broadleaf', 'img-tree-evergreen', 'img-tree-magic',
+                'img-bush-leafy', 'img-bush-berries', 'img-bush-flowers',
+                'img-chest-closed', 'img-chest-open-full', 'img-chest-open-empty',
+                'img-ankylo'
+            ];
             return expected.map(key => ({ key, exists: game.textures.exists(key) }));
         });
 
@@ -91,9 +101,24 @@ test.describe('Dino Math game — smoke', () => {
         }
     });
 
+    test('ankylo spritesheet has 24 frames', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
+        await waitForGameSceneReady(page);
+
+        const frameCount = await page.evaluate(() => {
+            const tex = window.__game.textures.get('img-ankylo');
+            // Phaser хранит frame "__BASE" + N кадров — считаем числовые
+            return Object.keys(tex.frames).filter(k => /^\d+$/.test(k)).length;
+        });
+        expect(frameCount).toBe(24);
+    });
+
     test('arrow keys move the dino', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await waitForGameSceneReady(page);
 
         const before = await page.evaluate(() => {
@@ -117,6 +142,7 @@ test.describe('Dino Math game — smoke', () => {
     test('walking up to a chest opens the question modal', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await waitForGameSceneReady(page);
 
         // Телепортируем дино прямо к первому сундуку (детерминированно)
@@ -161,6 +187,7 @@ test.describe('Dino Math game — smoke', () => {
         await page.reload();
 
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await waitForGameSceneReady(page);
 
         const correctAnswer = await page.evaluate(() => {
@@ -190,9 +217,78 @@ test.describe('Dino Math game — smoke', () => {
         expect(result.oscDelta - before).toBeGreaterThanOrEqual(4);
     });
 
+    test('levels menu shows 6 cards', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await expect(page.locator('#screen-levels')).toHaveClass(/active/);
+        const cards = page.locator('.level-card');
+        await expect(cards).toHaveCount(6);
+        await expect(cards.nth(0)).toContainText('Уровень 1');
+        await expect(cards.nth(5)).toContainText('Уровень 6');
+    });
+
+    test('level 5 generates multiplication questions', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').nth(4).click(); // 5-я карточка
+        await waitForGameSceneReady(page);
+
+        const questions = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            return s.chests.map(c => c.question);
+        });
+        // Все вопросы должны содержать знак умножения
+        for (const q of questions) {
+            expect(q).toMatch(/×/);
+        }
+    });
+
+    test('level 6 generates equations with x', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').nth(5).click();
+        await waitForGameSceneReady(page);
+
+        const questions = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            return s.chests.map(c => c.question);
+        });
+        for (const q of questions) {
+            expect(q).toMatch(/x/);
+        }
+    });
+
+    test('wrong answer does NOT show feedback modal', async ({ page }) => {
+        await page.goto('/');
+        await page.click('#btn-start');
+        await page.locator('.level-card').first().click();
+        await waitForGameSceneReady(page);
+
+        const wrong = await page.evaluate(() => {
+            const s = window.__game.scene.getScene('Game');
+            const c = s.chests[0];
+            s.dinoLogicalX = c.x + 10;
+            s.dinoLogicalY = c.y + 10;
+            s.followTarget.x = s.dinoLogicalX;
+            s.followTarget.y = s.dinoLogicalY;
+            return c.options.find(o => o !== c.correctAnswer);
+        });
+
+        await expect(page.locator('#modal-question')).toHaveClass(/active/, { timeout: 3000 });
+        await page.locator('.answer-btn', { hasText: String(wrong) }).click();
+
+        // Ждём и проверяем — никакого modal-feedback не появилось
+        await page.waitForTimeout(1500);
+        await expect(page.locator('#modal-question')).not.toHaveClass(/active/);
+        // modal-feedback вообще больше нет в HTML
+        const fb = await page.locator('#modal-feedback').count();
+        expect(fb).toBe(0);
+    });
+
     test('correct answer awards a fruit and closes modal', async ({ page }) => {
         await page.goto('/');
         await page.click('#btn-start');
+        await page.click('.level-card[data-level="1"], .level-card');
         await waitForGameSceneReady(page);
 
         // Узнаём правильный ответ для первого сундука
