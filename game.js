@@ -1163,26 +1163,52 @@ class BootScene extends Phaser.Scene {
     constructor() { super('Boot'); }
 
     create() {
-        const svgPromises = Object.keys(SPRITES).map(key => this.loadSVGAsCanvas(key));
-        const pngPromises = IMAGE_ASSETS.map(asset => this.loadPNGAssetWithRetry(asset, 2));
-        const total = svgPromises.length + pngPromises.length;
+        // Сценарии загрузки: SVG (мелкие, локальные blob-URL) можно грузить
+        // параллельно — они не идут через сеть. PNG-ассеты — батчами по N,
+        // чтобы мобильный канал не захлёбывался (одновременных подключений
+        // браузер открывает 6 на хост, и если запустить все 60+ запросов
+        // сразу, многие отвалятся по таймауту).
+        const svgLoaders = Object.keys(SPRITES).map(key => () => this.loadSVGAsCanvas(key));
+        const pngLoaders = IMAGE_ASSETS.map(asset => () => this.loadPNGAssetWithRetry(asset, 3));
+        const total = svgLoaders.length + pngLoaders.length;
         let loaded = 0;
-        // На каждом завершённом (или провалившемся) запросе двигаем прогресс
         const onOne = () => {
             loaded++;
             if (typeof onPreloadProgress === 'function') onPreloadProgress(loaded, total);
         };
-        const tracked = (p) => p.finally(onOne);
-        const all = [...svgPromises.map(tracked), ...pngPromises.map(tracked)];
 
-        Promise.allSettled(all).then(results => {
+        // SVG идут полностью параллельно
+        const svgPromises = svgLoaders.map(load => load().finally(onOne));
+        // PNG — батчами по PARALLEL за раз
+        const PARALLEL = 6;
+        const runPngInBatches = async () => {
+            const results = [];
+            for (let i = 0; i < pngLoaders.length; i += PARALLEL) {
+                const batch = pngLoaders.slice(i, i + PARALLEL);
+                const batchResults = await Promise.allSettled(
+                    batch.map(load => load().finally(onOne))
+                );
+                results.push(...batchResults);
+            }
+            return results;
+        };
+
+        Promise.allSettled([...svgPromises, runPngInBatches()]).then(async outer => {
+            // outer[0..N-1] — SVG-результаты, outer[N] — массив PNG-результатов
+            const pngBatch = outer[outer.length - 1];
+            const pngResults = pngBatch.status === 'fulfilled' ? pngBatch.value : [];
+            const svgResults = outer.slice(0, outer.length - 1);
+            const results = [...svgResults, ...pngResults];
             const failed = results.filter(r => r.status === 'rejected');
             if (failed.length > 0) {
                 console.warn(`[BootScene] ${failed.length}/${results.length} ассетов не загрузились:`,
-                    failed.map(r => (r.reason && r.reason.message) || String(r.reason)));
+                    failed.slice(0, 5).map(r => (r.reason && r.reason.message) || String(r.reason)));
             }
-            if (failed.length > results.length / 2) {
-                this.showError(`Загружено только ${results.length - failed.length}/${results.length} ассетов. Проверь сеть и обнови страницу.`);
+            // Красная ошибка только если ничего вообще не пришло — иначе
+            // продолжаем играть с тем что есть (пропавшие текстуры рендерятся
+            // зелёным квадратом-заглушкой Phaser).
+            if (failed.length >= results.length) {
+                this.showError(`Сеть нестабильна. Обнови страницу.`);
                 if (typeof onPreloadDone === 'function') onPreloadDone({ error: true });
                 return;
             }
@@ -1196,7 +1222,8 @@ class BootScene extends Phaser.Scene {
         const tryLoad = () => this.loadPNGAsset(asset).catch(err => {
             attempt++;
             if (attempt > maxRetries) throw err;
-            const delay = 300 * Math.pow(2, attempt - 1); // 300ms, 600ms, 1200ms...
+            // 500ms → 1500ms → 4500ms (тройной экспоненциальный бэк-офф для мобильных)
+            const delay = 500 * Math.pow(3, attempt - 1);
             console.warn(`[BootScene] retry ${attempt}/${maxRetries} для ${asset.url} через ${delay}ms`);
             return new Promise(r => setTimeout(r, delay)).then(tryLoad);
         });
