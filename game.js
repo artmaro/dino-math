@@ -1109,6 +1109,7 @@ function renderLevelMenu() {
             currentLevel = level.id;
             initAudio();
             showScreen('play');
+            maybeShowPreloadOverlay();
             startPhaserAndGame();
         });
         grid.appendChild(btn);
@@ -1163,23 +1164,29 @@ class BootScene extends Phaser.Scene {
 
     create() {
         const svgPromises = Object.keys(SPRITES).map(key => this.loadSVGAsCanvas(key));
-        // PNG-загрузки оборачиваем в retry (2 попытки с экспоненциальной паузой),
-        // потому что мобильные сети охотно роняют отдельные запросы.
         const pngPromises = IMAGE_ASSETS.map(asset => this.loadPNGAssetWithRetry(asset, 2));
-        // allSettled, а не all — даже если 1-2 ассета не пришли, остальной мир
-        // должен загрузиться. В Phaser отсутствующая текстура рендерится зелёным
-        // квадратом-заглушкой, что не идеально, но играбельно.
-        Promise.allSettled([...svgPromises, ...pngPromises]).then(results => {
+        const total = svgPromises.length + pngPromises.length;
+        let loaded = 0;
+        // На каждом завершённом (или провалившемся) запросе двигаем прогресс
+        const onOne = () => {
+            loaded++;
+            if (typeof onPreloadProgress === 'function') onPreloadProgress(loaded, total);
+        };
+        const tracked = (p) => p.finally(onOne);
+        const all = [...svgPromises.map(tracked), ...pngPromises.map(tracked)];
+
+        Promise.allSettled(all).then(results => {
             const failed = results.filter(r => r.status === 'rejected');
             if (failed.length > 0) {
                 console.warn(`[BootScene] ${failed.length}/${results.length} ассетов не загрузились:`,
                     failed.map(r => (r.reason && r.reason.message) || String(r.reason)));
             }
-            // Если упало больше половины — лучше показать ошибку
             if (failed.length > results.length / 2) {
                 this.showError(`Загружено только ${results.length - failed.length}/${results.length} ассетов. Проверь сеть и обнови страницу.`);
+                if (typeof onPreloadDone === 'function') onPreloadDone({ error: true });
                 return;
             }
+            if (typeof onPreloadDone === 'function') onPreloadDone({ error: false });
             this.scene.start('Game');
         });
     }
@@ -2044,6 +2051,38 @@ renderTitleAnkylo();
 renderLevelMenu();
 showScreen('start');
 
+// ===== Прогресс предзагрузки =====
+// Оверлей висит над Phaser-канвасом, пока BootScene докачивает ассеты.
+// Сам Phaser стартует только при первом переходе на play-экран — иначе
+// WebGL не может создать framebuffer (canvas parent имеет 0×0 при display:none).
+const preloadOverlayEl = document.getElementById('preload-overlay');
+const preloadFillEl = document.getElementById('preload-fill');
+const preloadTextEl = document.getElementById('preload-text');
+let preloadDoneOnce = false;
+
+window.onPreloadProgress = function(loaded, total) {
+    const pct = Math.round((loaded / total) * 100);
+    if (preloadFillEl) preloadFillEl.style.width = pct + '%';
+    if (preloadTextEl) preloadTextEl.textContent = `${pct}%  (${loaded}/${total})`;
+};
+
+window.onPreloadDone = function(info) {
+    preloadDoneOnce = true;
+    if (info && info.error) {
+        if (preloadTextEl) preloadTextEl.textContent = 'Ошибка — обнови страницу';
+        return;
+    }
+    if (preloadOverlayEl) preloadOverlayEl.classList.add('hidden');
+};
+
+// Показывает оверлей при первом запуске; на втором плэе уже не нужен —
+// ассеты уже в Phaser-кэше.
+function maybeShowPreloadOverlay() {
+    if (!preloadOverlayEl) return;
+    if (preloadDoneOnce) preloadOverlayEl.classList.add('hidden');
+    else preloadOverlayEl.classList.remove('hidden');
+}
+
 document.getElementById('btn-start').addEventListener('click', () => {
     showScreen('levels');
 });
@@ -2052,11 +2091,13 @@ document.getElementById('btn-levels-back').addEventListener('click', () => {
 });
 document.getElementById('btn-play-again').addEventListener('click', () => {
     showScreen('play');
+    maybeShowPreloadOverlay();
     startPhaserAndGame();
 });
 document.getElementById('btn-next-level').addEventListener('click', () => {
     if (currentLevel < LEVELS.length) currentLevel++;
     showScreen('play');
+    maybeShowPreloadOverlay();
     startPhaserAndGame();
 });
 document.getElementById('btn-back-menu').addEventListener('click', () => {
