@@ -3,3 +3,6 @@ playwright-report/
 test-results/
 .DS_Store
 *.log
+
+# Серверные креды и SSH-ключи — никогда не коммитим
+.secrets/

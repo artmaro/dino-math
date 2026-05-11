@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
     testDir: './tests',
     testMatch: /.*\.spec\.js/,
-    timeout: 30000,
+    testIgnore: /prod\.spec\.js/, // PROD-смоук запускать отдельно: npx playwright test tests/prod.spec.js
+    timeout: 180000,
     fullyParallel: false,
     workers: 1,
     reporter: [['list']],
