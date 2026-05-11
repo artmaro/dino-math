@@ -185,30 +185,36 @@ h2 {
     .levels-grid { grid-template-columns: 1fr; }
 }
 
-/* ==== HUD ==== */
+/* ==== HUD: overlay сверху-края, не блокирует клики по канвасу ==== */
 .hud {
     position: absolute;
-    top: 16px;
-    left: 16px;
-    right: 16px;
+    top: 12px;
+    left: 12px;
+    right: 12px;
     display: flex;
     justify-content: space-between;
-    gap: 12px;
-    z-index: 5;
+    align-items: flex-start;
+    gap: 8px;
+    z-index: 10;
+    pointer-events: none;
+    flex-wrap: wrap;
 }
 
 .hud-item {
-    background: #fff;
-    padding: 10px 18px;
-    border-radius: 20px;
-    font-size: 18px;
+    pointer-events: auto;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    padding: 8px 14px;
+    border-radius: 16px;
+    font-size: 16px;
     font-weight: bold;
     color: #444;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    border: 3px solid #ffd166;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    border: 2px solid #ffd166;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .hud-icon {
@@ -229,40 +235,40 @@ h2 {
     filter: grayscale(1) opacity(0.45);
 }
 
-/* ==== Карта ==== */
+/* ==== Карта: фуллскрин, HUD/D-pad оверлеем поверх ==== */
+#screen-play {
+    padding: 0;
+}
+
+#screen-play.active {
+    /* play-экран занимает всю площадь, дети позиционируются absolute */
+    display: block;
+}
+
 .map-wrap {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 60px;
-    margin-bottom: 4px;
-    padding: 4px;
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    display: block;
 }
 
 #world {
     width: 100%;
-    max-width: 1800px;
-    aspect-ratio: 16 / 9;
-    max-height: calc(100vh - 240px);
-    filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
-    border-radius: 18px;
-    overflow: hidden;
+    height: 100%;
+    max-width: none;
+    max-height: none;
     background: #5a8e36;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
+    /* в фуллскрин-режиме рамка и тень больше не нужны */
 }
 
 #world canvas {
     display: block;
-    max-width: 100%;
-    max-height: 100%;
-}
-
-#screen-play {
-    padding: 8px;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
 }
 
 .iso-chest .chest-open { display: none; }
@@ -284,26 +290,37 @@ h2 {
     50% { opacity: 0.7; transform: scale(1.2); }
 }
 
-/* ==== D-pad ==== */
+/* ==== Controls: D-pad оверлеем в правом нижнем углу ==== */
+.controls {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 10;
+    pointer-events: none;
+    text-align: right;
+    padding: 0;
+}
+
 .dpad {
     display: grid;
     grid-template-columns: 60px 60px 60px;
     grid-template-rows: 60px 60px 60px;
     gap: 6px;
-    margin: 0 auto;
+    margin: 0;
     touch-action: none;
+    pointer-events: auto;
 }
 
 .dpad-btn {
     font-family: inherit;
-    font-size: 30px;
+    font-size: 28px;
     font-weight: bold;
-    background: #ff8c42;
+    background: rgba(255, 140, 66, 0.92);
     color: #fff;
     border: none;
     border-radius: 16px;
     cursor: pointer;
-    box-shadow: 0 4px 0 #d96a1f;
+    box-shadow: 0 4px 0 rgba(217, 106, 31, 0.95);
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
@@ -316,7 +333,7 @@ h2 {
 .dpad-btn:active,
 .dpad-btn.pressed {
     transform: translateY(2px);
-    box-shadow: 0 2px 0 #d96a1f;
+    box-shadow: 0 2px 0 rgba(217, 106, 31, 0.95);
 }
 
 .dpad-up    { grid-column: 2; grid-row: 1; }
@@ -324,16 +341,52 @@ h2 {
 .dpad-down  { grid-column: 2; grid-row: 3; }
 .dpad-right { grid-column: 3; grid-row: 2; }
 
-/* ==== Controls ==== */
-.controls {
-    text-align: center;
-    padding: 20px;
+.hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.55);
+    background: rgba(255, 255, 255, 0.7);
+    padding: 4px 8px;
+    border-radius: 8px;
+    pointer-events: auto;
+    display: inline-block;
 }
 
-.hint {
-    margin-top: 10px;
-    font-size: 14px;
-    color: #666;
+/* На мобильных компактнее: HUD меньше, D-pad чуть мельче, подсказка скрыта */
+@media (max-width: 700px) {
+    .hud-item {
+        font-size: 13px;
+        padding: 6px 10px;
+        border-width: 2px;
+        border-radius: 12px;
+    }
+    .hud-icon {
+        font-size: 16px;
+    }
+    .hud-hearts .heart {
+        font-size: 16px;
+    }
+    .dpad {
+        grid-template-columns: 52px 52px 52px;
+        grid-template-rows: 52px 52px 52px;
+        gap: 4px;
+    }
+    .dpad-btn {
+        font-size: 24px;
+        border-radius: 12px;
+    }
+    .hint {
+        display: none;
+    }
+}
+
+/* На очень узких экранах HUD сворачивается в столбик */
+@media (max-width: 420px) {
+    .hud {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
 }
 
 /* ==== Модальные окна ==== */
@@ -514,12 +567,12 @@ h2 {
     line-height: 1.4;
 }
 
-/* ==== Адаптив ==== */
+/* ==== Адаптив остальных экранов ==== */
 @media (max-width: 600px) {
-    h1 { font-size: 24px; }
-    .description { font-size: 16px; }
-    .question { font-size: 36px; }
-    .answer-btn { width: 72px; height: 72px; font-size: 28px; }
-    .title-emoji { font-size: 72px; }
-    .hud-item { font-size: 14px; padding: 8px 12px; }
+    h1 { font-size: 22px; }
+    .description { font-size: 15px; }
+    .question { font-size: 32px; }
+    .answer-btn { width: 64px; height: 64px; font-size: 24px; }
+    .title-emoji { font-size: 64px; }
+    .card { padding: 28px 20px; }
 }

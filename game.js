@@ -7,7 +7,14 @@
 
 // ===== Константы =====
 const VIEWPORT = { w: 1280, h: 720 };
-const CAMERA_ZOOM = 0.95; // лёгкое отдаление для большего обзора
+const CAMERA_BASE_ZOOM = 0.95; // зум при ~1280×720 viewport
+// Адаптивный зум: на больших экранах база, на мобильных — слегка отдалён,
+// но не ниже 0.55 чтобы дино и сундуки оставались читаемыми пальцем.
+function computeCameraZoom(width, height) {
+    const baseW = 1280, baseH = 720;
+    const ratio = Math.min(width / baseW, height / baseH);
+    return Math.max(0.55, Math.min(CAMERA_BASE_ZOOM, CAMERA_BASE_ZOOM * ratio));
+}
 
 // Сдвиг исходных координат, чтобы вокруг ромба была "поляна" 300px шириной для леса-границы
 const SHIFT_X = 300;
@@ -1292,8 +1299,14 @@ class GameScene extends Phaser.Scene {
 
         // Камера и границы
         this.cameras.main.setBounds(0, 0, WORLD.w, WORLD.h);
-        this.cameras.main.setBackgroundColor('#5a8e36'); // тёмно-зелёный фон под лесом
-        this.cameras.main.setZoom(CAMERA_ZOOM);
+        this.cameras.main.setBackgroundColor('#5a8e36');
+        this.cameras.main.setZoom(computeCameraZoom(this.scale.width, this.scale.height));
+
+        // Реакция на ресайз окна — обновляем зум, viewport сам подхватывается
+        this.scale.on('resize', (gameSize) => {
+            this.cameras.main.setSize(gameSize.width, gameSize.height);
+            this.cameras.main.setZoom(computeCameraZoom(gameSize.width, gameSize.height));
+        });
 
         // Земля и река через Graphics
         this.drawTileGround();
@@ -1980,13 +1993,15 @@ function startPhaserAndGame() {
         game = new Phaser.Game({
             type: Phaser.AUTO,
             parent: 'world',
-            width: VIEWPORT.w,
-            height: VIEWPORT.h,
             backgroundColor: '#aee9ff',
             scene: [BootScene, GameScene],
             scale: {
-                mode: Phaser.Scale.FIT,
-                autoCenter: Phaser.Scale.CENTER_BOTH
+                // RESIZE: канвас занимает весь parent (#world), Phaser слушает
+                // resize окна и сам подстраивает размер. Камера получает текущий
+                // size через scale.on('resize', ...) внутри GameScene.
+                mode: Phaser.Scale.RESIZE,
+                width: window.innerWidth,
+                height: window.innerHeight
             },
             render: { antialias: true, pixelArt: false }
         });
