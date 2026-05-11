@@ -1163,13 +1163,37 @@ class BootScene extends Phaser.Scene {
 
     create() {
         const svgPromises = Object.keys(SPRITES).map(key => this.loadSVGAsCanvas(key));
-        const pngPromises = IMAGE_ASSETS.map(asset => this.loadPNGAsset(asset));
-        Promise.all([...svgPromises, ...pngPromises])
-            .then(() => this.scene.start('Game'))
-            .catch(err => {
-                console.error('[BootScene] Asset load failed:', err);
-                this.showError(err.message || 'Ошибка загрузки ассетов');
-            });
+        // PNG-загрузки оборачиваем в retry (2 попытки с экспоненциальной паузой),
+        // потому что мобильные сети охотно роняют отдельные запросы.
+        const pngPromises = IMAGE_ASSETS.map(asset => this.loadPNGAssetWithRetry(asset, 2));
+        // allSettled, а не all — даже если 1-2 ассета не пришли, остальной мир
+        // должен загрузиться. В Phaser отсутствующая текстура рендерится зелёным
+        // квадратом-заглушкой, что не идеально, но играбельно.
+        Promise.allSettled([...svgPromises, ...pngPromises]).then(results => {
+            const failed = results.filter(r => r.status === 'rejected');
+            if (failed.length > 0) {
+                console.warn(`[BootScene] ${failed.length}/${results.length} ассетов не загрузились:`,
+                    failed.map(r => (r.reason && r.reason.message) || String(r.reason)));
+            }
+            // Если упало больше половины — лучше показать ошибку
+            if (failed.length > results.length / 2) {
+                this.showError(`Загружено только ${results.length - failed.length}/${results.length} ассетов. Проверь сеть и обнови страницу.`);
+                return;
+            }
+            this.scene.start('Game');
+        });
+    }
+
+    loadPNGAssetWithRetry(asset, maxRetries) {
+        let attempt = 0;
+        const tryLoad = () => this.loadPNGAsset(asset).catch(err => {
+            attempt++;
+            if (attempt > maxRetries) throw err;
+            const delay = 300 * Math.pow(2, attempt - 1); // 300ms, 600ms, 1200ms...
+            console.warn(`[BootScene] retry ${attempt}/${maxRetries} для ${asset.url} через ${delay}ms`);
+            return new Promise(r => setTimeout(r, delay)).then(tryLoad);
+        });
+        return tryLoad();
     }
 
     loadSVGAsCanvas(key) {
